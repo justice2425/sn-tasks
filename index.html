@@ -681,8 +681,13 @@ const App = (function () {
     const btn = el('button', 'ghost', '+ Add list');
     btn.style.width = '100%';
     btn.onclick = () => {
-      const name = prompt('New list name:', 'New List');
-      if (name && name.trim()) { const c={id:id(),name:name.trim()}; data.columns.push(c); data.order[c.id]=[]; persist(); render(); }
+      const c = { id: id(), name: 'New List' };
+      data.columns.push(c); data.order[c.id] = [];
+      persist(); render();
+      // open inline rename on the newly added list so the user can name it
+      const titles = document.querySelectorAll('.kanban .column .title');
+      const last = titles[titles.length - 1];
+      if (last) startRename(c, last);
     };
     head.appendChild(btn); add.appendChild(head);
     board.appendChild(add);
@@ -692,12 +697,8 @@ const App = (function () {
     const wrap = el('div', 'column'); wrap.dataset.col = col.id;
     const head = el('div', 'column-head');
     const colIndex = data.columns.findIndex(c => c.id === col.id);
-    const rename = () => {
-      const name = prompt('Rename list:', col.name);
-      if (name && name.trim()) { col.name = name.trim(); persist(); render(); }
-    };
     const title = el('div', 'title'); title.textContent = col.name; title.title = 'Click to rename';
-    title.ondblclick = rename;
+    const rename = () => startRename(col, title);
     title.onclick = rename;
     const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]));
     const num = el('span', 'num', String(ids.length));
@@ -714,16 +715,17 @@ const App = (function () {
     pencil.onclick = (e) => { e.stopPropagation(); rename(); };
 
     const del = el('button', 'iconbtn', '✕'); del.title = 'Delete list';
+    if (data.columns.length <= 1) { del.disabled = true; del.style.opacity = '.3'; del.title = 'Keep at least one list'; }
     del.onclick = (e) => {
       e.stopPropagation();
-      if (data.columns.length <= 1) { alert('Keep at least one list.'); return; }
-      if (confirm('Delete list "'+col.name+'"? Tasks in it move to "'+data.columns[0].name+'".')) {
+      if (data.columns.length <= 1) return;
+      uiConfirm('Delete list "'+col.name+'"? Its tasks move to "'+data.columns[0].name+'".', () => {
         const moved = data.order[col.id] || [];
         if (data.columns[0].id !== col.id) data.order[data.columns[0].id].push(...moved);
         delete data.order[col.id];
         data.columns = data.columns.filter(c => c.id !== col.id);
         persist(); render();
-      }
+      });
     };
     head.appendChild(title); head.appendChild(num);
     head.appendChild(left); head.appendChild(right); head.appendChild(pencil); head.appendChild(del);
@@ -949,7 +951,10 @@ const App = (function () {
     };
     $('#m_delete').onclick = () => {
       if (!editingId) return;
-      if (confirm('Delete this task?')) { deleteTask(editingId); editingId=null; $('#overlay').classList.remove('open'); persist(); render(); }
+      const tid = editingId;
+      uiConfirm('Delete this task?', () => {
+        deleteTask(tid); editingId=null; $('#overlay').classList.remove('open'); persist(); render();
+      });
     };
     $('#m_archive').onclick = () => {
       const t = data.tasks[editingId]; if (!t) return;
@@ -959,6 +964,43 @@ const App = (function () {
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#overlay').classList.contains('open')) closeModal(); });
     // flush on unload
     window.addEventListener('beforeunload', () => { if (dirty) SNBridge.flushNow(); });
+  }
+
+  /* ---- inline column rename (works inside SN's sandboxed iframe, unlike prompt) ---- */
+  function startRename(col, titleEl) {
+    if (!titleEl || !titleEl.parentNode) return;
+    const input = el('input'); input.type = 'text'; input.value = col.name;
+    input.style.flex = '1 1 auto'; input.style.minWidth = '0';
+    titleEl.replaceWith(input);
+    input.focus(); input.select();
+    let done = false;
+    const commit = () => {
+      if (done) return; done = true;
+      const v = input.value.trim();
+      if (v) col.name = v;
+      persist(); render();
+    };
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { done = true; render(); }
+    };
+    input.onblur = commit;
+  }
+
+  /* ---- in-app confirm dialog (replaces blocked window.confirm) ---- */
+  function uiConfirm(message, onYes) {
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '100';
+    const box = el('div', 'modal'); box.style.maxWidth = '380px';
+    box.appendChild(el('div', 'modal-body', '<div>' + escapeHtml(message) + '</div>'));
+    const foot = el('div', 'modal-foot'); foot.style.justifyContent = 'flex-end'; foot.style.gap = '8px';
+    const cancel = el('button', 'ghost', 'Cancel');
+    const yes = el('button', 'primary', 'OK'); yes.style.background = 'var(--danger)'; yes.style.borderColor = 'var(--danger)';
+    foot.appendChild(cancel); foot.appendChild(yes); box.appendChild(foot);
+    ov.appendChild(box); document.body.appendChild(ov);
+    const close = () => ov.remove();
+    cancel.onclick = close;
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov) close(); });
+    yes.onclick = () => { close(); onYes(); };
   }
 
   /* ---- utils ---- */
