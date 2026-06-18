@@ -208,6 +208,9 @@
       <option value="created">Created</option>
       <option value="alpha">A–Z</option>
     </select>
+    <label class="small" id="hideDoneWrap" style="display:none; align-items:center; gap:5px; cursor:pointer; white-space:nowrap;">
+      <input type="checkbox" id="hideDone" style="width:auto; margin:0;" /> Hide done
+    </label>
     <div class="tagfilter" id="tagFilter"></div>
   </div>
 
@@ -242,6 +245,10 @@
           <select id="m_column"></select>
         </div>
       </div>
+      <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="m_hideList" style="width:auto; margin:0;" />
+        Hide this task from the List view (it still appears on the Board)
+      </label>
       <div class="field">
         <label>Notes</label>
         <textarea id="m_notes" placeholder="Details, context, anything…"></textarea>
@@ -488,8 +495,12 @@ const App = (function () {
     d.tags = d.tags || {};
     d.ui = d.ui || { view:'list' };
     if (!d.columns || !d.columns.length) d.columns = defaultData().columns;
-    // ensure archived flag exists on older tasks
-    Object.values(d.tasks).forEach(t => { if (typeof t.archived === 'undefined') t.archived = false; });
+    // ensure newer flags exist on tasks/ui created by older versions
+    Object.values(d.tasks).forEach(t => {
+      if (typeof t.archived === 'undefined') t.archived = false;
+      if (typeof t.hideFromList === 'undefined') t.hideFromList = false;
+    });
+    if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
     return d;
   }
   function sanitize() {
@@ -527,7 +538,7 @@ const App = (function () {
   function newTask(title, columnId) {
     const t = {
       id: id(), title: (title||'').trim(), notes:'', due:null, priority:0,
-      tags:[], links:[], subtasks:[], done:false, archived:false,
+      tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -559,9 +570,24 @@ const App = (function () {
     [cols[i], cols[j]] = [cols[j], cols[i]];
     persist(); render();
   }
+  function findDoneColumn() {
+    return data.columns.find(c => /^\s*done\s*$/i.test(c.name || '')) || null;
+  }
   function toggleDone(t) {
     t.done = !t.done;
     t.completedAt = t.done ? new Date().toISOString() : null;
+    const doneCol = findDoneColumn();
+    if (t.done) {
+      // moving to Done: remember where it came from so we can restore it later
+      if (doneCol) {
+        const cur = columnOf(t.id);
+        if (cur && cur !== doneCol.id) { t._fromColumn = cur; moveTask(t.id, doneCol.id); }
+      }
+    } else {
+      // un-completing: send it back to its previous column if that still exists
+      if (t._fromColumn && data.order[t._fromColumn]) moveTask(t.id, t._fromColumn);
+      t._fromColumn = null;
+    }
   }
   function ensureTagColor(name) {
     if (!data.tags[name]) {
@@ -628,6 +654,14 @@ const App = (function () {
     }
     return true;
   }
+  // Extra rules that apply ONLY to the List view (the Board ignores these).
+  function listMatch(t) {
+    if (!matchesFilters(t)) return false;
+    if (filters.status === 'archived') return true; // always show archived here so they can be restored
+    if (t.hideFromList) return false;               // per-task "hide from List"
+    if (filters.status === 'all' && data.ui.hideCompletedInList && t.done) return false; // global "hide done"
+    return true;
+  }
   function sortTasks(tasks) {
     const s = filters.sort;
     const arr = tasks.slice();
@@ -647,8 +681,15 @@ const App = (function () {
     // toolbar state
     document.querySelectorAll('#viewSeg button').forEach(b =>
       b.classList.toggle('active', b.dataset.view === data.ui.view));
+    // "Hide done" switch is only meaningful in List view
+    const hdw = $('#hideDoneWrap');
+    if (hdw) {
+      hdw.style.display = data.ui.view === 'list' ? 'inline-flex' : 'none';
+      $('#hideDone').checked = !!data.ui.hideCompletedInList;
+    }
     renderTagFilter();
-    const visible = Object.values(data.tasks).filter(matchesFilters).length;
+    const inView = data.ui.view === 'list' ? listMatch : matchesFilters;
+    const visible = Object.values(data.tasks).filter(inView).length;
     const total = Object.keys(data.tasks).length;
     $('#count').textContent = visible + (visible===total ? '' : ' / ' + total) + ' shown';
 
@@ -762,13 +803,13 @@ const App = (function () {
   /* ---- List ---- */
   function renderList() {
     const wrap = el('div', 'list');
-    const all = Object.values(data.tasks).filter(matchesFilters);
+    const all = Object.values(data.tasks).filter(listMatch);
     if (!all.length) { wrap.appendChild(el('div','empty', emptyMsg())); return wrap; }
 
     if (filters.sort === 'manual') {
       // group by column in board order
       data.columns.forEach(col => {
-        const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]));
+        const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && listMatch(data.tasks[tid]));
         if (!ids.length) return;
         wrap.appendChild(el('div','list-group-title', escapeHtml(col.name) + ' · ' + ids.length));
         ids.forEach((tid, i) => wrap.appendChild(renderCard(data.tasks[tid], col.id, i)));
@@ -800,6 +841,13 @@ const App = (function () {
     cb.onclick = (e) => { e.stopPropagation(); toggleDone(t); persist(); render(); };
     const title = el('div', 'card-title'); title.textContent = t.title || '(untitled)';
     row.appendChild(cb); row.appendChild(title);
+    if (t.archived) {
+      const un = el('button', 'ghost', 'Unarchive');
+      un.style.cssText = 'flex:0 0 auto; font-size:11px; padding:2px 8px;';
+      un.title = 'Restore this task to its list';
+      un.onclick = (e) => { e.stopPropagation(); t.archived = false; persist(); render(); };
+      row.appendChild(un);
+    }
     card.appendChild(row);
 
     const badges = [];
@@ -844,6 +892,7 @@ const App = (function () {
     $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
     $('#m_due').value = t.due || '';
     $('#m_priority').value = String(t.priority);
+    $('#m_hideList').checked = !!t.hideFromList;
     $('#m_notes').value = t.notes || '';
     // columns dropdown
     const sel = $('#m_column'); sel.innerHTML = '';
@@ -863,6 +912,7 @@ const App = (function () {
     t.title = $('#m_title').value.trim();
     t.due = $('#m_due').value || null;
     t.priority = parseInt($('#m_priority').value, 10) || 0;
+    t.hideFromList = $('#m_hideList').checked;
     t.notes = $('#m_notes').value;
     const newCol = $('#m_column').value;
     if (newCol && newCol !== columnOf(editingId)) moveTask(editingId, newCol);
@@ -935,13 +985,23 @@ const App = (function () {
     $('#statusFilter').onchange = (e) => { filters.status = e.target.value; render(); };
     $('#dueFilter').onchange = (e) => { filters.due = e.target.value; render(); };
     $('#sortBy').onchange = (e) => { filters.sort = e.target.value; render(); };
+    $('#hideDone').onchange = (e) => { data.ui.hideCompletedInList = e.target.checked; persist(); render(); };
+    $('#m_hideList').onchange = commitModal;
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
     };
     // modal
     $('#m_close').onclick = closeModal;
     $('#overlay').addEventListener('mousedown', (e) => { if (e.target.id === 'overlay') closeModal(); });
-    $('#m_done').onclick = () => { const t = data.tasks[editingId]; if (t){ toggleDone(t); $('#m_done').className='checkbox'+(t.done?' done':''); persist(); } };
+    $('#m_done').onclick = () => {
+      const t = data.tasks[editingId]; if (!t) return;
+      toggleDone(t);
+      $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
+      // keep the List/Column dropdown in sync with any auto-move to Done,
+      // otherwise closing the modal would move the task back.
+      $('#m_column').value = columnOf(editingId) || $('#m_column').value;
+      persist();
+    };
     $('#m_title').onkeydown = (e) => { if (e.key === 'Enter') closeModal(); };
     ['m_due','m_priority','m_notes','m_column'].forEach(idn => { const e=document.getElementById(idn); e.onchange = commitModal; });
     $('#m_subInput').onkeydown = (e) => {
