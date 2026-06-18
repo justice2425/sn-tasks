@@ -908,10 +908,19 @@ const App = (function () {
     const box = $('#m_links'); box.innerHTML = '';
     t.links.forEach((l, i) => {
       const row = el('div','link-item');
-      const a = el('a'); a.href = l.url; a.target='_blank'; a.rel='noopener noreferrer';
-      a.textContent = l.label || l.url; a.style.flex='1'; a.style.color='var(--accent)'; a.style.wordBreak='break-all';
+      const href = safeUrl(l.url);
+      let node;
+      if (href) {
+        node = el('a'); node.href = href; node.target='_blank'; node.rel='noopener noreferrer';
+        node.textContent = l.label || l.url; node.style.color='var(--accent)';
+      } else {
+        // Unsafe / unsupported protocol: show as plain non-clickable text.
+        node = el('span'); node.textContent = (l.label ? l.label + ' — ' : '') + l.url + '  (blocked: unsupported link)';
+        node.style.color='var(--muted)'; node.title='Only http, https and mailto links are clickable.';
+      }
+      node.style.flex='1'; node.style.wordBreak='break-all';
       const x = el('button','iconbtn','✕'); x.onclick = () => { t.links.splice(i,1); persist(); renderModalLinks(t); render(); };
-      row.appendChild(a); row.appendChild(x);
+      row.appendChild(node); row.appendChild(x);
       box.appendChild(row);
     });
   }
@@ -1006,6 +1015,12 @@ const App = (function () {
   /* ---- utils ---- */
   function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   function escapeAttr(s){ return escapeHtml(s); }
+  // Only allow http/https/mailto to ever become a clickable href. Blocks
+  // javascript:, data:, file:, etc. — even if a link was hand-edited into the note JSON.
+  function safeUrl(u){
+    const s = String(u == null ? '' : u).trim();
+    return /^(https?:|mailto:)/i.test(s) ? s : null;
+  }
 
   return {
     start() {
