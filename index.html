@@ -5,26 +5,26 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
 <style>
-  /* ---------------------------------------------------------------------------
-     Theme: prefer Standard Notes' injected StyleKit variables, fall back to a
-     sensible dark/light-neutral palette so the app is also usable standalone
-     (e.g. in the test harness).
-  --------------------------------------------------------------------------- */
+  /* Inside Standard Notes, the --sn-stylekit-* variables are supplied by your
+     active theme, so the plugin automatically matches the app. The fallbacks
+     below are a clean LIGHT theme used only when those variables aren't present
+     (e.g. the default Standard Notes theme, the test harness, or opening the
+     file directly), so you get a white background rather than a dark one. */
   :root {
-    --bg:        var(--sn-stylekit-background-color, #1a1c1f);
-    --fg:        var(--sn-stylekit-foreground-color, #e7e9ea);
-    --panel:     var(--sn-stylekit-contrast-background-color, #25282c);
-    --panel-2:   var(--sn-stylekit-secondary-background-color, #2e3237);
-    --border:    var(--sn-stylekit-border-color, #3a3f45);
-    --muted:     var(--sn-stylekit-passive-color-1, #9aa0a6);
-    --muted-2:   var(--sn-stylekit-passive-color-2, #767b80);
+    --bg:        var(--sn-stylekit-background-color, #ffffff);
+    --fg:        var(--sn-stylekit-foreground-color, #1f2328);
+    --panel:     var(--sn-stylekit-contrast-background-color, #f4f6f8);
+    --panel-2:   var(--sn-stylekit-secondary-background-color, #ffffff);
+    --border:    var(--sn-stylekit-border-color, #d8dce0);
+    --muted:     var(--sn-stylekit-passive-color-1, #6b7177);
+    --muted-2:   var(--sn-stylekit-passive-color-2, #9aa0a6);
     --accent:    var(--sn-stylekit-info-color, #2f6fed);
     --accent-fg: var(--sn-stylekit-info-contrast-color, #ffffff);
     --danger:    var(--sn-stylekit-danger-color, #e5484d);
     --success:   var(--sn-stylekit-success-color, #30a46c);
-    --warning:   var(--sn-stylekit-warning-color, #f5a623);
+    --warning:   var(--sn-stylekit-warning-color, #c47900);
     --radius: 8px;
-    --shadow: 0 6px 24px rgba(0,0,0,0.35);
+    --shadow: 0 6px 24px rgba(0,0,0,0.18);
   }
 
   * { box-sizing: border-box; }
@@ -93,11 +93,11 @@
   }
   .column.dragover { outline: 2px dashed var(--accent); outline-offset: -2px; }
   .column-head {
-    display: flex; align-items: center; gap: 6px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 4px; padding: 8px 10px;
     border-bottom: 1px solid var(--border);
   }
   .column-head .title { font-weight: 600; flex: 1 1 auto; cursor: text; }
-  .column-head .num { color: var(--muted); font-size: 12px; }
+  .column-head .num { color: var(--muted); font-size: 12px; margin-right: 2px; }
   .column-body { padding: 8px; overflow-y: auto; flex: 1 1 auto; min-height: 24px; }
   .addcol { min-width: 200px; }
 
@@ -149,7 +149,7 @@
   .modal-head { display: flex; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); gap: 8px; }
   .modal-head .grow { flex: 1; }
   .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-  .modal-foot { display: flex; justify-content: space-between; padding: 12px 14px; border-top: 1px solid var(--border); }
+  .modal-foot { display: flex; justify-content: space-between; padding: 12px 14px; border-top: 1px solid var(--border); align-items: center; }
   .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
   .field-row { display: flex; gap: 10px; }
   .field-row > .field { flex: 1; }
@@ -192,6 +192,7 @@
       <option value="all">All</option>
       <option value="active">Active</option>
       <option value="completed">Completed</option>
+      <option value="archived">Archived</option>
     </select>
     <select id="dueFilter" title="Due">
       <option value="all">Any due</option>
@@ -267,7 +268,10 @@
       </div>
     </div>
     <div class="modal-foot">
-      <button class="danger" id="m_delete">Delete task</button>
+      <span style="display:flex; gap:8px;">
+        <button class="danger" id="m_delete">Delete</button>
+        <button class="ghost" id="m_archive">Archive</button>
+      </span>
       <span class="small" id="m_meta"></span>
     </div>
   </div>
@@ -484,6 +488,8 @@ const App = (function () {
     d.tags = d.tags || {};
     d.ui = d.ui || { view:'list' };
     if (!d.columns || !d.columns.length) d.columns = defaultData().columns;
+    // ensure archived flag exists on older tasks
+    Object.values(d.tasks).forEach(t => { if (typeof t.archived === 'undefined') t.archived = false; });
     return d;
   }
   function sanitize() {
@@ -509,7 +515,7 @@ const App = (function () {
     SNBridge.save(text, previewText());
   }
   function previewText() {
-    const all = Object.values(data.tasks);
+    const all = Object.values(data.tasks).filter(t => !t.archived);
     const open = all.filter(t => !t.done).length;
     const next = all.filter(t => !t.done && t.due).sort((a,b)=>a.due.localeCompare(b.due))[0];
     let s = open + ' open task' + (open===1?'':'s') + ' · ' + all.length + ' total';
@@ -521,7 +527,7 @@ const App = (function () {
   function newTask(title, columnId) {
     const t = {
       id: id(), title: (title||'').trim(), notes:'', due:null, priority:0,
-      tags:[], links:[], subtasks:[], done:false,
+      tags:[], links:[], subtasks:[], done:false, archived:false,
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -544,6 +550,14 @@ const App = (function () {
     const c = columnOf(taskId);
     if (c) data.order[c] = data.order[c].filter(t => t !== taskId);
     delete data.tasks[taskId];
+  }
+  function moveColumn(colId, dir) {
+    const i = data.columns.findIndex(c => c.id === colId);
+    const j = i + dir;
+    if (i === -1 || j < 0 || j >= data.columns.length) return;
+    const cols = data.columns;
+    [cols[i], cols[j]] = [cols[j], cols[i]];
+    persist(); render();
   }
   function toggleDone(t) {
     t.done = !t.done;
@@ -587,8 +601,13 @@ const App = (function () {
 
   /* ---- filtering / sorting ---- */
   function matchesFilters(t) {
-    if (filters.status === 'active' && t.done) return false;
-    if (filters.status === 'completed' && !t.done) return false;
+    // Archived tasks are hidden everywhere except the dedicated "Archived" view.
+    if (filters.status === 'archived') { if (!t.archived) return false; }
+    else {
+      if (t.archived) return false;
+      if (filters.status === 'active' && t.done) return false;
+      if (filters.status === 'completed' && !t.done) return false;
+    }
     if (filters.search) {
       const q = filters.search.toLowerCase();
       const hay = (t.title + ' ' + t.notes + ' ' + t.tags.join(' ') + ' ' +
@@ -672,15 +691,29 @@ const App = (function () {
   function renderColumn(col) {
     const wrap = el('div', 'column'); wrap.dataset.col = col.id;
     const head = el('div', 'column-head');
-    const title = el('div', 'title'); title.textContent = col.name; title.title = 'Click to rename';
-    title.onclick = () => {
+    const colIndex = data.columns.findIndex(c => c.id === col.id);
+    const rename = () => {
       const name = prompt('Rename list:', col.name);
       if (name && name.trim()) { col.name = name.trim(); persist(); render(); }
     };
+    const title = el('div', 'title'); title.textContent = col.name; title.title = 'Click to rename';
+    title.ondblclick = rename;
+    title.onclick = rename;
     const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]));
     const num = el('span', 'num', String(ids.length));
-    const del = el('button', 'iconbtn', '⋯');
-    del.title = 'List options';
+
+    // move list left / right
+    const left = el('button', 'iconbtn', '◀'); left.title = 'Move list left';
+    left.disabled = colIndex === 0; if (left.disabled) left.style.opacity = '.3';
+    left.onclick = (e) => { e.stopPropagation(); moveColumn(col.id, -1); };
+    const right = el('button', 'iconbtn', '▶'); right.title = 'Move list right';
+    right.disabled = colIndex === data.columns.length - 1; if (right.disabled) right.style.opacity = '.3';
+    right.onclick = (e) => { e.stopPropagation(); moveColumn(col.id, +1); };
+
+    const pencil = el('button', 'iconbtn', '✎'); pencil.title = 'Rename list';
+    pencil.onclick = (e) => { e.stopPropagation(); rename(); };
+
+    const del = el('button', 'iconbtn', '✕'); del.title = 'Delete list';
     del.onclick = (e) => {
       e.stopPropagation();
       if (data.columns.length <= 1) { alert('Keep at least one list.'); return; }
@@ -692,7 +725,8 @@ const App = (function () {
         persist(); render();
       }
     };
-    head.appendChild(title); head.appendChild(num); head.appendChild(del);
+    head.appendChild(title); head.appendChild(num);
+    head.appendChild(left); head.appendChild(right); head.appendChild(pencil); head.appendChild(del);
     wrap.appendChild(head);
 
     const body = el('div', 'column-body'); body.dataset.col = col.id;
@@ -743,6 +777,7 @@ const App = (function () {
     return wrap;
   }
   function emptyMsg() {
+    if (filters.status === 'archived') return 'No archived tasks.';
     if (Object.keys(data.tasks).length === 0) return 'No tasks yet. Use “+ Task” or the quick-add box to begin.';
     return 'No tasks match the current filters.';
   }
@@ -814,7 +849,8 @@ const App = (function () {
     sel.value = columnOf(taskId) || data.columns[0].id;
     renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t);
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
-    $('#m_meta').textContent = created ? 'Created ' + created : '';
+    $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '');
+    $('#m_archive').textContent = t.archived ? 'Unarchive' : 'Archive';
     $('#overlay').classList.add('open');
     $('#m_title').focus();
   }
@@ -914,6 +950,11 @@ const App = (function () {
     $('#m_delete').onclick = () => {
       if (!editingId) return;
       if (confirm('Delete this task?')) { deleteTask(editingId); editingId=null; $('#overlay').classList.remove('open'); persist(); render(); }
+    };
+    $('#m_archive').onclick = () => {
+      const t = data.tasks[editingId]; if (!t) return;
+      t.archived = !t.archived;
+      editingId = null; $('#overlay').classList.remove('open'); persist(); render();
     };
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#overlay').classList.contains('open')) closeModal(); });
     // flush on unload
