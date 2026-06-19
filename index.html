@@ -172,6 +172,34 @@
   .hidden { display: none !important; }
   .small { font-size: 12px; color: var(--muted); }
   .pill-prio { font-size: 11px; padding: 1px 6px; border-radius: 4px; }
+
+  /* select mode + bulk bar */
+  button.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+  .card.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .bulkbar {
+    display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+    padding: 8px 12px; background: var(--panel); border-top: 1px solid var(--border);
+  }
+  .bulkbar select { width: auto; }
+
+  /* markdown preview */
+  .md-preview { border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; margin-top: 6px; background: var(--panel); }
+  .md-preview h1, .md-preview h2, .md-preview h3 { margin: .35em 0; line-height: 1.25; }
+  .md-preview h1 { font-size: 1.3em; } .md-preview h2 { font-size: 1.15em; } .md-preview h3 { font-size: 1.05em; }
+  .md-preview ul, .md-preview ol { margin: .35em 0 .35em 1.3em; padding: 0; }
+  .md-preview p { margin: .4em 0; }
+  .md-preview code { background: var(--bg); padding: 1px 4px; border-radius: 4px; font-size: .92em; }
+  .md-preview a { color: var(--accent); }
+  .md-preview .md-check { color: var(--muted); margin-right: 4px; }
+
+  /* stats */
+  .stat-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat-card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .stat-num { font-size: 22px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--muted); }
+  .bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
+  .bar-track { flex: 1; height: 8px; background: var(--panel); border-radius: 999px; overflow: hidden; }
+  .bar-fill { height: 100%; background: var(--accent); }
 </style>
 </head>
 <body>
@@ -180,10 +208,13 @@
     <div class="seg" id="viewSeg">
       <button data-view="list">List</button>
       <button data-view="kanban">Board</button>
+      <button data-view="agenda">Agenda</button>
     </div>
     <input class="search" id="search" type="search" placeholder="Search tasks…" />
     <span class="grow"></span>
     <span class="count" id="count"></span>
+    <button class="ghost" id="selectBtn" title="Select multiple tasks">Select</button>
+    <button class="ghost" id="statsBtn" title="Board statistics">Stats</button>
     <button class="ghost" id="addTaskBtn">+ Task</button>
   </div>
 
@@ -215,6 +246,16 @@
   </div>
 
   <div class="surface" id="surface"></div>
+
+  <div id="bulkBar" class="bulkbar" style="display:none;">
+    <span id="bulkCount" class="small"></span>
+    <span class="grow" style="flex:1 1 auto;"></span>
+    <button class="ghost" id="bulkComplete">Complete</button>
+    <select id="bulkMove"><option value="">Move to…</option></select>
+    <button class="ghost" id="bulkArchive">Archive</button>
+    <button class="danger" id="bulkDelete">Delete</button>
+    <button class="ghost" id="bulkClear">Done</button>
+  </div>
 </div>
 
 <!-- Task editor modal -->
@@ -245,13 +286,26 @@
           <select id="m_column"></select>
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Repeat</label>
+          <select id="m_recur">
+            <option value="none">Does not repeat</option>
+            <option value="daily">Daily</option>
+            <option value="weekdays">Every weekday</option>
+            <option value="weekly">Weekly</option>
+            <option value="monthly">Monthly</option>
+          </select>
+        </div>
+      </div>
       <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" id="m_hideList" style="width:auto; margin:0;" />
         Hide this task from the List view (it still appears on the Board)
       </label>
       <div class="field">
-        <label>Notes</label>
-        <textarea id="m_notes" placeholder="Details, context, anything…"></textarea>
+        <label>Notes <span class="small" id="m_notesToggle" style="cursor:pointer; color:var(--accent); font-weight:400;">· preview</span></label>
+        <textarea id="m_notes" placeholder="Details, context… Markdown supported (#, **bold**, - lists, [link](url))"></textarea>
+        <div id="m_notesPreview" class="md-preview" style="display:none;"></div>
       </div>
       <div class="field">
         <label>Tags</label>
@@ -281,6 +335,14 @@
       </span>
       <span class="small" id="m_meta"></span>
     </div>
+  </div>
+</div>
+
+<!-- Stats modal -->
+<div class="overlay" id="statsOverlay">
+  <div class="modal" style="max-width:460px;">
+    <div class="modal-head"><strong class="grow">Statistics</strong><button class="iconbtn" id="stats_close" title="Close">✕</button></div>
+    <div class="modal-body" id="statsBody"></div>
   </div>
 </div>
 
@@ -456,6 +518,8 @@ const App = (function () {
   let dirty = false;
   let editingId = null;   // task currently open in modal
   let standalone = false;
+  let selectMode = false;            // bulk multi-select mode
+  const selectedIds = new Set();     // ids selected in bulk mode (not persisted)
 
   const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set() };
 
@@ -499,6 +563,7 @@ const App = (function () {
     Object.values(d.tasks).forEach(t => {
       if (typeof t.archived === 'undefined') t.archived = false;
       if (typeof t.hideFromList === 'undefined') t.hideFromList = false;
+      if (typeof t.recur === 'undefined') t.recur = 'none';
     });
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
     return d;
@@ -538,7 +603,7 @@ const App = (function () {
   function newTask(title, columnId) {
     const t = {
       id: id(), title: (title||'').trim(), notes:'', due:null, priority:0,
-      tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
+      tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false, recur:'none',
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -577,12 +642,22 @@ const App = (function () {
     t.done = !t.done;
     t.completedAt = t.done ? new Date().toISOString() : null;
     const doneCol = findDoneColumn();
+    const origin = columnOf(t.id);
     if (t.done) {
-      // moving to Done: remember where it came from so we can restore it later
-      if (doneCol) {
-        const cur = columnOf(t.id);
-        if (cur && cur !== doneCol.id) { t._fromColumn = cur; moveTask(t.id, doneCol.id); }
+      // recurring task: spawn the next occurrence into its originating column
+      if (t.recur && t.recur !== 'none') {
+        const next = JSON.parse(JSON.stringify(t));
+        next.id = id(); next.done = false; next.completedAt = null; next.archived = false;
+        next.createdAt = new Date().toISOString();
+        next.due = computeNextDue(t.due, t.recur);
+        next.subtasks = (next.subtasks || []).map(s => ({ id: s.id, title: s.title, done: false }));
+        delete next._fromColumn;
+        data.tasks[next.id] = next;
+        const placeCol = origin || data.columns[0].id;
+        (data.order[placeCol] = data.order[placeCol] || []).unshift(next.id);
       }
+      // moving to Done: remember where it came from so we can restore it later
+      if (doneCol && origin && origin !== doneCol.id) { t._fromColumn = origin; moveTask(t.id, doneCol.id); }
     } else {
       // un-completing: send it back to its previous column if that still exists
       if (t._fromColumn && data.order[t._fromColumn]) moveTask(t.id, t._fromColumn);
@@ -623,6 +698,99 @@ const App = (function () {
     if (diff === 1) return 'Tomorrow';
     if (diff === -1) return 'Yesterday';
     return d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
+  }
+  function addDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return toISODate(d); }
+  function computeNextDue(dueStr, freq) {
+    const base = new Date((dueStr || todayStr()) + 'T00:00:00');
+    const d = new Date(base);
+    if (freq === 'daily') d.setDate(d.getDate() + 1);
+    else if (freq === 'weekly') d.setDate(d.getDate() + 7);
+    else if (freq === 'weekdays') { do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6); }
+    else if (freq === 'monthly') {
+      const day = base.getDate();
+      d.setDate(1); d.setMonth(d.getMonth() + 1);
+      const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      d.setDate(Math.min(day, dim));
+    } else return dueStr || null;
+    return toISODate(d);
+  }
+  function recurLabel(r) { return ({ daily:'Daily', weekdays:'Weekdays', weekly:'Weekly', monthly:'Monthly' })[r] || ''; }
+
+  /* ---- natural-language quick-add ----
+     Understands: today, tomorrow, weekday names, "next <weekday>", "in N days",
+     ISO dates (2026-07-01); !high/!med/!low (or !1/!2/!3); #tag (repeatable). */
+  function parseQuickAdd(raw) {
+    let s = ' ' + (raw || '') + ' ';
+    const out = { title:'', due:null, priority:0, tags:[] };
+    s = s.replace(/\s#([^\s#]+)/g, (m, tag) => { out.tags.push(tag); return ' '; });
+    s = s.replace(/\s!(?:high|h|3)\b/ig, () => { out.priority = 3; return ' '; });
+    s = s.replace(/\s!(?:med|medium|m|2)\b/ig, () => { out.priority = 2; return ' '; });
+    s = s.replace(/\s!(?:low|l|1)\b/ig, () => { out.priority = 1; return ' '; });
+    const today = todayStr();
+    s = s.replace(/\s(\d{4}-\d{2}-\d{2})\b/, (m, d) => { out.due = d; return ' '; });
+    if (!out.due) s = s.replace(/\sin (\d{1,3}) days?\b/i, (m, n) => { out.due = addDays(today, parseInt(n, 10)); return ' '; });
+    if (!out.due) s = s.replace(/\stoday\b/i, () => { out.due = today; return ' '; });
+    if (!out.due) s = s.replace(/\stomorrow\b/i, () => { out.due = addDays(today, 1); return ' '; });
+    if (!out.due) {
+      const days = { sunday:0,monday:1,tuesday:2,wednesday:3,thursday:4,friday:5,saturday:6,
+                     sun:0,mon:1,tue:2,tues:2,wed:3,thu:4,thur:4,thurs:4,fri:5,sat:6 };
+      s = s.replace(/\s(next\s+)?(sunday|monday|tuesday|wednesday|thursday|friday|saturday|sun|mon|tues|tue|wed|thurs|thur|thu|fri|sat)\b/i,
+        (m, next, name) => {
+          const target = days[name.toLowerCase()];
+          const cur = new Date(today + 'T00:00:00').getDay();
+          let diff = (target - cur + 7) % 7; if (diff === 0) diff = 7; // always at least 1 day ahead
+          out.due = addDays(today, diff);
+          return ' ';
+        });
+    }
+    out.title = s.replace(/\s+/g, ' ').trim();
+    return out;
+  }
+
+  /* ---- minimal, safe Markdown renderer for task notes ---- */
+  function renderMarkdown(src) {
+    const inline = (s) => escapeHtml(s)
+      .replace(/`([^`]+)`/g, '<code>$1</code>')
+      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, txt, url) => {
+        const u = safeUrl(url);
+        return u ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + txt + '</a>' : txt;
+      });
+    let html = '', listType = null;
+    const closeList = () => { if (listType) { html += listType === 'ul' ? '</ul>' : '</ol>'; listType = null; } };
+    for (const raw of String(src || '').split('\n')) {
+      const line = raw.replace(/\s+$/, '');
+      if (!line.trim()) { closeList(); continue; }
+      let m;
+      if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { closeList(); const lvl = m[1].length; html += '<h' + lvl + '>' + inline(m[2]) + '</h' + lvl + '>'; continue; }
+      if ((m = line.match(/^\s*[-*]\s+\[([ xX])\]\s+(.*)$/))) {
+        if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
+        html += '<li><span class="md-check">' + (m[1].toLowerCase() === 'x' ? '☑' : '☐') + '</span>' + inline(m[2]) + '</li>'; continue;
+      }
+      if ((m = line.match(/^\s*[-*]\s+(.*)$/))) {
+        if (listType !== 'ul') { closeList(); html += '<ul>'; listType = 'ul'; }
+        html += '<li>' + inline(m[1]) + '</li>'; continue;
+      }
+      if ((m = line.match(/^\s*\d+\.\s+(.*)$/))) {
+        if (listType !== 'ol') { closeList(); html += '<ol>'; listType = 'ol'; }
+        html += '<li>' + inline(m[1]) + '</li>'; continue;
+      }
+      closeList(); html += '<p>' + inline(line) + '</p>';
+    }
+    closeList();
+    return html || '<p class="small">(nothing to preview)</p>';
+  }
+
+  /* ---- bulk select helpers ---- */
+  function bulkApply(fn) { selectedIds.forEach(i => { const t = data.tasks[i]; if (t) fn(t); }); persist(); render(); }
+  function renderBulkBar() {
+    const bb = $('#bulkBar');
+    if (!selectMode) { bb.style.display = 'none'; return; }
+    bb.style.display = 'flex';
+    $('#bulkCount').textContent = selectedIds.size + ' selected';
+    $('#bulkMove').innerHTML = '<option value="">Move to…</option>' +
+      data.columns.map(c => '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>').join('');
   }
 
   /* ---- filtering / sorting ---- */
@@ -696,7 +864,12 @@ const App = (function () {
     const surface = $('#surface');
     surface.innerHTML = '';
     if (data.ui.view === 'kanban') surface.appendChild(renderKanban());
+    else if (data.ui.view === 'agenda') surface.appendChild(renderAgenda());
     else surface.appendChild(renderList());
+
+    const selBtn = $('#selectBtn');
+    if (selBtn) selBtn.classList.toggle('active', selectMode);
+    renderBulkBar();
   }
 
   function renderTagFilter() {
@@ -776,7 +949,15 @@ const App = (function () {
     // quick add
     const qa = el('div', 'quickadd');
     const qi = el('input'); qi.type = 'text'; qi.placeholder = '+ Add task';
-    qi.onkeydown = (e) => { if (e.key === 'Enter' && qi.value.trim()) { newTask(qi.value, col.id); persist(); qi.value=''; render(); } };
+    qi.title = 'Try: Pay rent tomorrow !high #finance';
+    qi.onkeydown = (e) => {
+      if (e.key === 'Enter' && qi.value.trim()) {
+        const p = parseQuickAdd(qi.value);
+        const t = newTask(p.title, col.id);
+        t.due = p.due; t.priority = p.priority; t.tags = p.tags; p.tags.forEach(ensureTagColor);
+        persist(); qi.value = ''; render();
+      }
+    };
     qa.appendChild(qi); body.appendChild(qa);
 
     ids.forEach((tid, index) => body.appendChild(renderCard(data.tasks[tid], col.id, index)));
@@ -825,9 +1006,77 @@ const App = (function () {
     return 'No tasks match the current filters.';
   }
 
+  /* ---- Agenda (group by due window) ---- */
+  function renderAgenda() {
+    const wrap = el('div', 'list');
+    const tasks = Object.values(data.tasks).filter(matchesFilters);
+    const today = todayStr(), t1 = addDays(today, 1), t7 = addDays(today, 7);
+    const groups = [
+      { label:'Overdue',   test: t => t.due && t.due < today && !t.done },
+      { label:'Today',     test: t => t.due === today },
+      { label:'Tomorrow',  test: t => t.due === t1 },
+      { label:'This week', test: t => t.due && t.due > t1 && t.due <= t7 },
+      { label:'Later',     test: t => t.due && t.due > t7 },
+      { label:'No date',   test: t => !t.due },
+    ];
+    const assigned = new Set();
+    let any = false;
+    groups.forEach(g => {
+      const items = tasks.filter(t => !assigned.has(t.id) && g.test(t));
+      items.forEach(t => assigned.add(t.id));
+      if (!items.length) return;
+      any = true;
+      items.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || b.priority - a.priority);
+      wrap.appendChild(el('div', 'list-group-title', g.label + ' · ' + items.length));
+      items.forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
+    });
+    if (!any) wrap.appendChild(el('div', 'empty', 'No tasks to show.'));
+    return wrap;
+  }
+
+  /* ---- Stats ---- */
+  function openStats() {
+    const all = Object.values(data.tasks).filter(t => !t.archived);
+    const total = all.length, done = all.filter(t => t.done).length, active = total - done;
+    const today = todayStr();
+    const overdue = all.filter(t => !t.done && t.due && t.due < today).length;
+    const dueToday = all.filter(t => !t.done && t.due === today).length;
+    const rate = total ? Math.round(done / total * 100) : 0;
+    const weekAgo = addDays(today, -7);
+    const doneWeek = all.filter(t => t.done && t.completedAt && t.completedAt.slice(0, 10) >= weekAgo).length;
+    const archived = Object.values(data.tasks).filter(t => t.archived).length;
+    const prioLabels = ['None', 'Low', 'Medium', 'High'];
+    const byP = [0, 0, 0, 0]; all.forEach(t => { if (!t.done) byP[t.priority]++; });
+    const tagCount = {}; all.forEach(t => { if (!t.done) t.tags.forEach(tg => tagCount[tg] = (tagCount[tg] || 0) + 1); });
+    const card = (n, l) => '<div class="stat-card"><div class="stat-num">' + n + '</div><div class="stat-label">' + l + '</div></div>';
+    let html = '<div class="stat-grid">' +
+      card(active, 'Active') + card(done, 'Completed') +
+      card(overdue, 'Overdue') + card(dueToday, 'Due today') +
+      card(rate + '%', 'Completion rate') + card(doneWeek, 'Done in last 7 days') + '</div>';
+    const maxP = Math.max(1, byP[1], byP[2], byP[3]);
+    html += '<div style="margin-top:14px;"><div class="stat-label" style="margin-bottom:4px;">Active by priority</div>';
+    [3, 2, 1].forEach(p => {
+      html += '<div class="bar-row"><span style="width:62px;">' + prioLabels[p] + '</span><span class="bar-track"><span class="bar-fill" style="width:' + (byP[p] / maxP * 100) + '%"></span></span><span>' + byP[p] + '</span></div>';
+    });
+    html += '</div>';
+    const tags = Object.entries(tagCount).sort((a, b) => b[1] - a[1]).slice(0, 6);
+    if (tags.length) {
+      const maxT = Math.max(1, ...tags.map(x => x[1]));
+      html += '<div style="margin-top:14px;"><div class="stat-label" style="margin-bottom:4px;">Active by tag</div>';
+      tags.forEach(([tg, n]) => {
+        html += '<div class="bar-row"><span style="width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(tg) +
+          '</span><span class="bar-track"><span class="bar-fill" style="width:' + (n / maxT * 100) + '%; background:' + ensureTagColor(tg) + '"></span></span><span>' + n + '</span></div>';
+      });
+      html += '</div>';
+    }
+    if (archived) html += '<div class="small" style="margin-top:12px;">' + archived + ' archived task' + (archived === 1 ? '' : 's') + ' (not counted above).</div>';
+    $('#statsBody').innerHTML = html;
+    $('#statsOverlay').classList.add('open');
+  }
+
   /* ---- Card ---- */
   function renderCard(t, colId, index) {
-    const card = el('div', 'card' + (t.done ? ' completed' : ''));
+    const card = el('div', 'card' + (t.done ? ' completed' : '') + (selectMode && selectedIds.has(t.id) ? ' selected' : ''));
     card.dataset.id = t.id;
     card.draggable = true;
     card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/task', t.id); card.classList.add('dragging'); });
@@ -863,13 +1112,17 @@ const App = (function () {
     }
     if (t.links.length) badges.push('<span class="badge">'+ icon('link') + t.links.length +'</span>');
     if (t.notes && t.notes.trim()) badges.push('<span class="badge">'+ icon('note') +'</span>');
+    if (t.recur && t.recur !== 'none') badges.push('<span class="badge">⟳ '+ escapeHtml(recurLabel(t.recur)) +'</span>');
     t.tags.forEach(tag => {
       const c = ensureTagColor(tag);
       badges.push('<span class="badge tag" style="border-color:'+c+'"><span style="width:7px;height:7px;border-radius:50%;background:'+c+';display:inline-block"></span>'+ escapeHtml(tag) +'</span>');
     });
     if (badges.length) { const mr = el('div','meta-row', badges.join('')); card.appendChild(mr); }
 
-    card.addEventListener('click', () => openModal(t.id));
+    card.addEventListener('click', () => {
+      if (selectMode) { selectedIds.has(t.id) ? selectedIds.delete(t.id) : selectedIds.add(t.id); render(); }
+      else openModal(t.id);
+    });
     return card;
   }
 
@@ -892,8 +1145,11 @@ const App = (function () {
     $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
     $('#m_due').value = t.due || '';
     $('#m_priority').value = String(t.priority);
+    $('#m_recur').value = t.recur || 'none';
     $('#m_hideList').checked = !!t.hideFromList;
     $('#m_notes').value = t.notes || '';
+    // always start notes in edit mode
+    $('#m_notes').style.display = ''; $('#m_notesPreview').style.display = 'none'; $('#m_notesToggle').textContent = '· preview';
     // columns dropdown
     const sel = $('#m_column'); sel.innerHTML = '';
     data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
@@ -912,6 +1168,7 @@ const App = (function () {
     t.title = $('#m_title').value.trim();
     t.due = $('#m_due').value || null;
     t.priority = parseInt($('#m_priority').value, 10) || 0;
+    t.recur = $('#m_recur').value;
     t.hideFromList = $('#m_hideList').checked;
     t.notes = $('#m_notes').value;
     const newCol = $('#m_column').value;
@@ -987,6 +1244,38 @@ const App = (function () {
     $('#sortBy').onchange = (e) => { filters.sort = e.target.value; render(); };
     $('#hideDone').onchange = (e) => { data.ui.hideCompletedInList = e.target.checked; persist(); render(); };
     $('#m_hideList').onchange = commitModal;
+    $('#m_recur').onchange = commitModal;
+
+    // notes markdown preview toggle
+    $('#m_notesToggle').onclick = () => {
+      const editing = $('#m_notesPreview').style.display === 'none';
+      if (editing) {
+        $('#m_notesPreview').innerHTML = renderMarkdown($('#m_notes').value);
+        $('#m_notesPreview').style.display = ''; $('#m_notes').style.display = 'none';
+        $('#m_notesToggle').textContent = '· edit';
+      } else {
+        $('#m_notesPreview').style.display = 'none'; $('#m_notes').style.display = '';
+        $('#m_notesToggle').textContent = '· preview';
+      }
+    };
+
+    // bulk select mode
+    $('#selectBtn').onclick = () => { selectMode = !selectMode; if (!selectMode) selectedIds.clear(); render(); };
+    $('#bulkComplete').onclick = () => bulkApply(t => { if (!t.done) toggleDone(t); });
+    $('#bulkArchive').onclick = () => { selectedIds.forEach(i => { const t = data.tasks[i]; if (t) t.archived = true; }); selectedIds.clear(); persist(); render(); };
+    $('#bulkMove').onchange = (e) => { const c = e.target.value; if (c) { selectedIds.forEach(i => moveTask(i, c)); persist(); render(); } };
+    $('#bulkDelete').onclick = () => {
+      if (!selectedIds.size) return;
+      uiConfirm('Delete ' + selectedIds.size + ' selected task' + (selectedIds.size === 1 ? '' : 's') + '?', () => {
+        selectedIds.forEach(i => deleteTask(i)); selectedIds.clear(); persist(); render();
+      });
+    };
+    $('#bulkClear').onclick = () => { selectMode = false; selectedIds.clear(); render(); };
+
+    // stats
+    $('#statsBtn').onclick = openStats;
+    $('#stats_close').onclick = () => $('#statsOverlay').classList.remove('open');
+    $('#statsOverlay').addEventListener('mousedown', (e) => { if (e.target.id === 'statsOverlay') $('#statsOverlay').classList.remove('open'); });
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
     };
