@@ -200,6 +200,23 @@
   .bar-row { display: flex; align-items: center; gap: 8px; margin: 4px 0; font-size: 12px; }
   .bar-track { flex: 1; height: 8px; background: var(--panel); border-radius: 999px; overflow: hidden; }
   .bar-fill { height: 100%; background: var(--accent); }
+
+  /* eisenhower matrix */
+  .matrix { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .matrix-cell { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-height: 90px; }
+  @media (max-width: 620px) { .matrix { grid-template-columns: 1fr; } }
+
+  /* smart view chips */
+  .smartviews { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 12px 0; }
+  .smartviews .chip.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+
+  /* due-today banner */
+  .banner {
+    display: flex; align-items: center; gap: 10px; margin: 8px 12px 0;
+    padding: 8px 12px; border-radius: 8px; border: 1px solid var(--warning);
+    background: color-mix(in srgb, var(--warning) 12%, transparent);
+  }
+  .banner .grow { flex: 1; }
 </style>
 </head>
 <body>
@@ -209,12 +226,14 @@
       <button data-view="list">List</button>
       <button data-view="kanban">Board</button>
       <button data-view="agenda">Agenda</button>
+      <button data-view="matrix">Matrix</button>
     </div>
     <input class="search" id="search" type="search" placeholder="Search tasks…" />
     <span class="grow"></span>
     <span class="count" id="count"></span>
+    <button class="ghost" id="undoBtn" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
     <button class="ghost" id="selectBtn" title="Select multiple tasks">Select</button>
-    <button class="ghost" id="statsBtn" title="Board statistics">Stats</button>
+    <button class="ghost" id="statsBtn" title="Board statistics & actions">Stats</button>
     <button class="ghost" id="addTaskBtn">+ Task</button>
   </div>
 
@@ -244,6 +263,8 @@
     </label>
     <div class="tagfilter" id="tagFilter"></div>
   </div>
+
+  <div class="smartviews" id="smartViews"></div>
 
   <div class="surface" id="surface"></div>
 
@@ -288,6 +309,10 @@
       </div>
       <div class="field-row">
         <div class="field">
+          <label>Start (hide until)</label>
+          <input id="m_start" type="date" />
+        </div>
+        <div class="field">
           <label>Repeat</label>
           <select id="m_recur">
             <option value="none">Does not repeat</option>
@@ -296,6 +321,24 @@
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
+        </div>
+        <div class="field" style="max-width:80px;">
+          <label>Every</label>
+          <input id="m_recurEvery" type="number" min="1" value="1" />
+        </div>
+        <div class="field">
+          <label>Repeats from</label>
+          <select id="m_recurBasis">
+            <option value="due">Due date</option>
+            <option value="completed">Completion</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Blocked by</label>
+        <div id="m_blockers"></div>
+        <div class="inline-add">
+          <select id="m_blockerSelect"><option value="">Add a blocking task…</option></select>
         </div>
       </div>
       <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -520,8 +563,12 @@ const App = (function () {
   let standalone = false;
   let selectMode = false;            // bulk multi-select mode
   const selectedIds = new Set();     // ids selected in bulk mode (not persisted)
+  const undoStack = [];              // serialized prior states (not persisted)
+  let lastSerialized = null;         // last saved serialization, used for undo capture
+  let summaryDismissed = false;      // "due today" banner dismissed this session
+  let activeSmart = null;            // currently active smart-view chip
 
-  const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set() };
+  const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0 };
 
   /* ---- persistence ---- */
   function defaultData() {
@@ -550,6 +597,9 @@ const App = (function () {
       } catch (e) {}
     }
     sanitize();
+    lastSerialized = JSON.stringify(data);
+    undoStack.length = 0;
+    summaryDismissed = false;
     render();
   }
   function migrate(d) {
@@ -564,6 +614,10 @@ const App = (function () {
       if (typeof t.archived === 'undefined') t.archived = false;
       if (typeof t.hideFromList === 'undefined') t.hideFromList = false;
       if (typeof t.recur === 'undefined') t.recur = 'none';
+      if (typeof t.recurEvery === 'undefined') t.recurEvery = 1;
+      if (typeof t.recurBasis === 'undefined') t.recurBasis = 'due';
+      if (typeof t.start === 'undefined') t.start = null;
+      if (!Array.isArray(t.blockedBy)) t.blockedBy = [];
     });
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
     return d;
@@ -584,11 +638,28 @@ const App = (function () {
     });
   }
 
-  function persist() {
-    dirty = true;
+  function saveOut() {
     const text = JSON.stringify(data);
+    lastSerialized = text;
     if (standalone) { try { localStorage.setItem('sn-tasks-standalone', text); } catch (e) {} return; }
     SNBridge.save(text, previewText());
+  }
+  function persist() {
+    dirty = true;
+    // record the previous saved state as an undo point
+    if (lastSerialized !== null) {
+      const cur = JSON.stringify(data);
+      if (cur !== lastSerialized) { undoStack.push(lastSerialized); if (undoStack.length > 60) undoStack.shift(); }
+    }
+    saveOut();
+  }
+  function undo() {
+    if (!undoStack.length) return;
+    const prev = undoStack.pop();
+    data = migrate(JSON.parse(prev));
+    sanitize();
+    saveOut();        // writes prev as current; does not push a new undo point
+    render();
   }
   function previewText() {
     const all = Object.values(data.tasks).filter(t => !t.archived);
@@ -603,7 +674,8 @@ const App = (function () {
   function newTask(title, columnId) {
     const t = {
       id: id(), title: (title||'').trim(), notes:'', due:null, priority:0,
-      tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false, recur:'none',
+      tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
+      recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[],
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -649,8 +721,10 @@ const App = (function () {
         const next = JSON.parse(JSON.stringify(t));
         next.id = id(); next.done = false; next.completedAt = null; next.archived = false;
         next.createdAt = new Date().toISOString();
-        next.due = computeNextDue(t.due, t.recur);
+        const basisDate = (t.recurBasis === 'completed') ? todayStr() : t.due;
+        next.due = computeNextDue(basisDate, t.recur, t.recurEvery);
         next.subtasks = (next.subtasks || []).map(s => ({ id: s.id, title: s.title, done: false }));
+        next.start = null; next.blockedBy = [];
         delete next._fromColumn;
         data.tasks[next.id] = next;
         const placeCol = origin || data.columns[0].id;
@@ -700,21 +774,30 @@ const App = (function () {
     return d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
   }
   function addDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return toISODate(d); }
-  function computeNextDue(dueStr, freq) {
+  function computeNextDue(dueStr, freq, every) {
+    every = Math.max(1, parseInt(every, 10) || 1);
     const base = new Date((dueStr || todayStr()) + 'T00:00:00');
     const d = new Date(base);
-    if (freq === 'daily') d.setDate(d.getDate() + 1);
-    else if (freq === 'weekly') d.setDate(d.getDate() + 7);
-    else if (freq === 'weekdays') { do { d.setDate(d.getDate() + 1); } while (d.getDay() === 0 || d.getDay() === 6); }
+    if (freq === 'daily') d.setDate(d.getDate() + every);
+    else if (freq === 'weekly') d.setDate(d.getDate() + 7 * every);
+    else if (freq === 'weekdays') { let n = every; while (n > 0) { d.setDate(d.getDate() + 1); if (d.getDay() !== 0 && d.getDay() !== 6) n--; } }
     else if (freq === 'monthly') {
       const day = base.getDate();
-      d.setDate(1); d.setMonth(d.getMonth() + 1);
+      d.setDate(1); d.setMonth(d.getMonth() + every);
       const dim = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
       d.setDate(Math.min(day, dim));
     } else return dueStr || null;
     return toISODate(d);
   }
-  function recurLabel(r) { return ({ daily:'Daily', weekdays:'Weekdays', weekly:'Weekly', monthly:'Monthly' })[r] || ''; }
+  function recurLabel(t) {
+    const r = typeof t === 'string' ? t : t.recur;
+    const every = (typeof t === 'object' && t.recurEvery) || 1;
+    const base = ({ daily:'day', weekdays:'weekday', weekly:'week', monthly:'month' })[r];
+    if (!base) return '';
+    return every > 1 ? ('Every ' + every + ' ' + base + 's') : ({ daily:'Daily', weekdays:'Weekdays', weekly:'Weekly', monthly:'Monthly' })[r];
+  }
+  function isDeferred(t) { return !!(t.start && t.start > todayStr()); }
+  function isBlocked(t) { return (t.blockedBy || []).some(bid => data.tasks[bid] && !data.tasks[bid].done); }
 
   /* ---- natural-language quick-add ----
      Understands: today, tomorrow, weekday names, "next <weekday>", "in N days",
@@ -793,6 +876,83 @@ const App = (function () {
       data.columns.map(c => '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>').join('');
   }
 
+  /* ---- smart views ---- */
+  const SMART = [
+    { key:'all',     label:'All',          apply(){ filters.status='all';    filters.due='all';     filters.priorityMin=0; } },
+    { key:'today',   label:'Today',        apply(){ filters.status='active'; filters.due='today';   filters.priorityMin=0; } },
+    { key:'overdue', label:'Overdue',      apply(){ filters.status='active'; filters.due='overdue'; filters.priorityMin=0; } },
+    { key:'week',    label:'Next 7 days',  apply(){ filters.status='active'; filters.due='week';    filters.priorityMin=0; } },
+    { key:'high',    label:'High priority',apply(){ filters.status='active'; filters.due='all';     filters.priorityMin=3; } },
+  ];
+  function syncFilterControls() { $('#statusFilter').value = filters.status; $('#dueFilter').value = filters.due; }
+  function renderSmartViews() {
+    const wrap = $('#smartViews'); wrap.innerHTML = '';
+    SMART.forEach(sv => {
+      const chip = el('span', 'chip' + (activeSmart === sv.key ? ' active' : ''), sv.label);
+      chip.onclick = () => { activeSmart = sv.key; sv.apply(); syncFilterControls(); render(); };
+      wrap.appendChild(chip);
+    });
+  }
+
+  /* ---- due-today banner ---- */
+  function renderBanner() {
+    const old = $('#dueBanner'); if (old) old.remove();
+    if (summaryDismissed) return;
+    const today = todayStr();
+    const tasks = Object.values(data.tasks).filter(t => !t.archived && !t.done && !isDeferred(t));
+    const dueToday = tasks.filter(t => t.due === today).length;
+    const overdue = tasks.filter(t => t.due && t.due < today).length;
+    if (!dueToday && !overdue) return;
+    const parts = [];
+    if (overdue) parts.push(overdue + ' overdue');
+    if (dueToday) parts.push(dueToday + ' due today');
+    const banner = el('div', 'banner'); banner.id = 'dueBanner';
+    banner.appendChild(el('span', 'grow', '🔔 ' + escapeHtml(parts.join(' · '))));
+    const view = el('button', 'ghost', 'View');
+    view.onclick = () => { activeSmart = overdue ? 'overdue' : 'today'; SMART.find(s => s.key === activeSmart).apply(); syncFilterControls(); data.ui.view = 'list'; saveOut(); render(); };
+    const x = el('button', 'iconbtn', '✕'); x.onclick = () => { summaryDismissed = true; renderBanner(); };
+    banner.appendChild(view); banner.appendChild(x);
+    const surface = $('#surface'); surface.parentNode.insertBefore(banner, surface);
+  }
+
+  /* ---- custom tag colors ---- */
+  function normalizeHex(c) { return /^#[0-9a-f]{6}$/i.test(c) ? c : '#2f6fed'; }
+  function openTagColors() {
+    const tags = allTags();
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '100';
+    const box = el('div', 'modal'); box.style.maxWidth = '340px';
+    const head = el('div', 'modal-head', '<strong class="grow">Tag colors</strong>');
+    const close = el('button', 'iconbtn', '✕'); close.onclick = () => ov.remove(); head.appendChild(close);
+    const body = el('div', 'modal-body');
+    if (!tags.length) body.appendChild(el('div', 'small', 'No tags yet.'));
+    tags.forEach(tag => {
+      const row = el('div', 'sub-item');
+      const sw = el('input'); sw.type = 'color'; sw.value = normalizeHex(ensureTagColor(tag));
+      sw.style.cssText = 'width:42px; height:28px; padding:0;';
+      sw.oninput = () => { data.tags[tag] = sw.value; persist(); render(); };
+      const name = el('span'); name.textContent = tag; name.style.flex = '1';
+      row.appendChild(sw); row.appendChild(name); body.appendChild(row);
+    });
+    box.appendChild(head); box.appendChild(body); ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+  }
+
+  /* ---- task dependencies (modal) ---- */
+  function renderModalBlockers(t) {
+    const box = $('#m_blockers'); box.innerHTML = '';
+    (t.blockedBy || []).forEach(bid => {
+      const b = data.tasks[bid]; if (!b) return;
+      const chip = el('span', 'chip', (b.done ? '✓ ' : '') + escapeHtml((b.title || '(untitled)').slice(0, 40)) + ' <span class="x">✕</span>');
+      chip.querySelector('.x').onclick = () => { t.blockedBy = t.blockedBy.filter(x => x !== bid); persist(); renderModalBlockers(t); render(); };
+      box.appendChild(chip);
+    });
+    const sel = $('#m_blockerSelect'); sel.innerHTML = '<option value="">Add a blocking task…</option>';
+    Object.values(data.tasks).forEach(o => {
+      if (o.id === t.id || o.archived || (t.blockedBy || []).includes(o.id)) return;
+      const op = el('option'); op.value = o.id; op.textContent = (o.title || '(untitled)').slice(0, 40); sel.appendChild(op);
+    });
+  }
+
   /* ---- filtering / sorting ---- */
   function matchesFilters(t) {
     // Archived tasks are hidden everywhere except the dedicated "Archived" view.
@@ -809,6 +969,7 @@ const App = (function () {
       if (!hay.includes(q)) return false;
     }
     if (filters.tags.size) { if (!t.tags.some(tag => filters.tags.has(tag))) return false; }
+    if (filters.priorityMin && t.priority < filters.priorityMin) return false;
     if (filters.due !== 'all') {
       const st = dueState(t.due);
       if (filters.due === 'none' && t.due) return false;
@@ -826,6 +987,7 @@ const App = (function () {
   function listMatch(t) {
     if (!matchesFilters(t)) return false;
     if (filters.status === 'archived') return true; // always show archived here so they can be restored
+    if (isDeferred(t)) return false;                // start date not reached yet
     if (t.hideFromList) return false;               // per-task "hide from List"
     if (filters.status === 'all' && data.ui.hideCompletedInList && t.done) return false; // global "hide done"
     return true;
@@ -856,6 +1018,8 @@ const App = (function () {
       $('#hideDone').checked = !!data.ui.hideCompletedInList;
     }
     renderTagFilter();
+    renderSmartViews();
+    const ub = $('#undoBtn'); if (ub) { ub.disabled = !undoStack.length; ub.style.opacity = undoStack.length ? '1' : '.4'; }
     const inView = data.ui.view === 'list' ? listMatch : matchesFilters;
     const visible = Object.values(data.tasks).filter(inView).length;
     const total = Object.keys(data.tasks).length;
@@ -865,11 +1029,13 @@ const App = (function () {
     surface.innerHTML = '';
     if (data.ui.view === 'kanban') surface.appendChild(renderKanban());
     else if (data.ui.view === 'agenda') surface.appendChild(renderAgenda());
+    else if (data.ui.view === 'matrix') surface.appendChild(renderMatrix());
     else surface.appendChild(renderList());
 
     const selBtn = $('#selectBtn');
     if (selBtn) selBtn.classList.toggle('active', selectMode);
     renderBulkBar();
+    renderBanner();
   }
 
   function renderTagFilter() {
@@ -1009,7 +1175,7 @@ const App = (function () {
   /* ---- Agenda (group by due window) ---- */
   function renderAgenda() {
     const wrap = el('div', 'list');
-    const tasks = Object.values(data.tasks).filter(matchesFilters);
+    const tasks = Object.values(data.tasks).filter(t => matchesFilters(t) && !isDeferred(t));
     const today = todayStr(), t1 = addDays(today, 1), t7 = addDays(today, 7);
     const groups = [
       { label:'Overdue',   test: t => t.due && t.due < today && !t.done },
@@ -1032,6 +1198,30 @@ const App = (function () {
     });
     if (!any) wrap.appendChild(el('div', 'empty', 'No tasks to show.'));
     return wrap;
+  }
+
+  /* ---- Eisenhower matrix (urgent × important) ---- */
+  function renderMatrix() {
+    const today = todayStr(), soon = addDays(today, 2);
+    const tasks = Object.values(data.tasks).filter(t => matchesFilters(t) && !isDeferred(t) && !t.done);
+    const urgent = t => t.due && t.due <= soon;
+    const important = t => t.priority >= 2;
+    const quads = [
+      { label:'Do now · urgent + important',          test: t => urgent(t) && important(t) },
+      { label:'Schedule · important, not urgent',      test: t => !urgent(t) && important(t) },
+      { label:'Delegate / quick · urgent, low priority', test: t => urgent(t) && !important(t) },
+      { label:'Later · neither',                       test: t => !urgent(t) && !important(t) },
+    ];
+    const grid = el('div', 'matrix');
+    quads.forEach(q => {
+      const cell = el('div', 'matrix-cell');
+      const items = tasks.filter(q.test).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || b.priority - a.priority);
+      cell.appendChild(el('div', 'list-group-title', q.label + ' · ' + items.length));
+      if (!items.length) cell.appendChild(el('div', 'small', '—'));
+      items.forEach(t => cell.appendChild(renderCard(t, columnOf(t.id), 0)));
+      grid.appendChild(cell);
+    });
+    return grid;
   }
 
   /* ---- Stats ---- */
@@ -1070,7 +1260,19 @@ const App = (function () {
       html += '</div>';
     }
     if (archived) html += '<div class="small" style="margin-top:12px;">' + archived + ' archived task' + (archived === 1 ? '' : 's') + ' (not counted above).</div>';
+    html += '<div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">' +
+      '<button class="ghost" id="stats_archiveDone">Archive all completed (' + done + ')</button>' +
+      '<button class="ghost" id="stats_tagColors">Tag colors…</button></div>';
     $('#statsBody').innerHTML = html;
+    $('#stats_archiveDone').onclick = () => {
+      const ids = Object.values(data.tasks).filter(t => t.done && !t.archived).map(t => t.id);
+      if (!ids.length) return;
+      uiConfirm('Archive ' + ids.length + ' completed task' + (ids.length === 1 ? '' : 's') + '?', () => {
+        ids.forEach(i => { data.tasks[i].archived = true; });
+        persist(); $('#statsOverlay').classList.remove('open'); render();
+      });
+    };
+    $('#stats_tagColors').onclick = () => { $('#statsOverlay').classList.remove('open'); openTagColors(); };
     $('#statsOverlay').classList.add('open');
   }
 
@@ -1112,7 +1314,9 @@ const App = (function () {
     }
     if (t.links.length) badges.push('<span class="badge">'+ icon('link') + t.links.length +'</span>');
     if (t.notes && t.notes.trim()) badges.push('<span class="badge">'+ icon('note') +'</span>');
-    if (t.recur && t.recur !== 'none') badges.push('<span class="badge">⟳ '+ escapeHtml(recurLabel(t.recur)) +'</span>');
+    if (t.recur && t.recur !== 'none') badges.push('<span class="badge">⟳ '+ escapeHtml(recurLabel(t)) +'</span>');
+    if (isDeferred(t)) badges.push('<span class="badge">⏳ '+ escapeHtml(fmtDue(t.start)) +'</span>');
+    if (isBlocked(t)) badges.push('<span class="badge due-over">⛔ blocked</span>');
     t.tags.forEach(tag => {
       const c = ensureTagColor(tag);
       badges.push('<span class="badge tag" style="border-color:'+c+'"><span style="width:7px;height:7px;border-radius:50%;background:'+c+';display:inline-block"></span>'+ escapeHtml(tag) +'</span>');
@@ -1146,6 +1350,9 @@ const App = (function () {
     $('#m_due').value = t.due || '';
     $('#m_priority').value = String(t.priority);
     $('#m_recur').value = t.recur || 'none';
+    $('#m_recurEvery').value = t.recurEvery || 1;
+    $('#m_recurBasis').value = t.recurBasis || 'due';
+    $('#m_start').value = t.start || '';
     $('#m_hideList').checked = !!t.hideFromList;
     $('#m_notes').value = t.notes || '';
     // always start notes in edit mode
@@ -1154,7 +1361,7 @@ const App = (function () {
     const sel = $('#m_column'); sel.innerHTML = '';
     data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
     sel.value = columnOf(taskId) || data.columns[0].id;
-    renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t);
+    renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t);
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
     $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '');
     $('#m_archive').textContent = t.archived ? 'Unarchive' : 'Archive';
@@ -1169,6 +1376,9 @@ const App = (function () {
     t.due = $('#m_due').value || null;
     t.priority = parseInt($('#m_priority').value, 10) || 0;
     t.recur = $('#m_recur').value;
+    t.recurEvery = Math.max(1, parseInt($('#m_recurEvery').value, 10) || 1);
+    t.recurBasis = $('#m_recurBasis').value;
+    t.start = $('#m_start').value || null;
     t.hideFromList = $('#m_hideList').checked;
     t.notes = $('#m_notes').value;
     const newCol = $('#m_column').value;
@@ -1236,15 +1446,23 @@ const App = (function () {
   function wire() {
     // view toggle
     document.querySelectorAll('#viewSeg button').forEach(b => {
-      b.onclick = () => { data.ui.view = b.dataset.view; persist(); render(); };
+      b.onclick = () => { data.ui.view = b.dataset.view; saveOut(); render(); };
     });
     $('#search').oninput = (e) => { filters.search = e.target.value; render(); };
-    $('#statusFilter').onchange = (e) => { filters.status = e.target.value; render(); };
-    $('#dueFilter').onchange = (e) => { filters.due = e.target.value; render(); };
+    $('#statusFilter').onchange = (e) => { filters.status = e.target.value; activeSmart = null; render(); };
+    $('#dueFilter').onchange = (e) => { filters.due = e.target.value; activeSmart = null; render(); };
     $('#sortBy').onchange = (e) => { filters.sort = e.target.value; render(); };
-    $('#hideDone').onchange = (e) => { data.ui.hideCompletedInList = e.target.checked; persist(); render(); };
+    $('#hideDone').onchange = (e) => { data.ui.hideCompletedInList = e.target.checked; saveOut(); render(); };
     $('#m_hideList').onchange = commitModal;
     $('#m_recur').onchange = commitModal;
+    $('#m_recurEvery').onchange = commitModal;
+    $('#m_recurBasis').onchange = commitModal;
+    $('#m_start').onchange = commitModal;
+    $('#m_blockerSelect').onchange = (e) => {
+      const v = e.target.value; const t = data.tasks[editingId];
+      if (v && t) { if (!t.blockedBy.includes(v)) t.blockedBy.push(v); persist(); renderModalBlockers(t); render(); }
+      e.target.value = '';
+    };
 
     // notes markdown preview toggle
     $('#m_notesToggle').onclick = () => {
@@ -1276,6 +1494,25 @@ const App = (function () {
     $('#statsBtn').onclick = openStats;
     $('#stats_close').onclick = () => $('#statsOverlay').classList.remove('open');
     $('#statsOverlay').addEventListener('mousedown', (e) => { if (e.target.id === 'statsOverlay') $('#statsOverlay').classList.remove('open'); });
+
+    // undo
+    $('#undoBtn').onclick = undo;
+
+    // keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      const tag = (document.activeElement && document.activeElement.tagName) || '';
+      const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+      if (typing) return;
+      const overlayOpen = $('#overlay').classList.contains('open') || $('#statsOverlay').classList.contains('open');
+      if (overlayOpen) return;
+      if (e.key === 'n') { e.preventDefault(); $('#addTaskBtn').click(); }
+      else if (e.key === '/') { e.preventDefault(); $('#search').focus(); }
+      else if (e.key === '1') { data.ui.view = 'list'; saveOut(); render(); }
+      else if (e.key === '2') { data.ui.view = 'kanban'; saveOut(); render(); }
+      else if (e.key === '3') { data.ui.view = 'agenda'; saveOut(); render(); }
+      else if (e.key === '4') { data.ui.view = 'matrix'; saveOut(); render(); }
+    });
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
     };
