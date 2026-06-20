@@ -93,7 +93,7 @@
   }
   .column.dragover { outline: 2px dashed var(--accent); outline-offset: -2px; }
   .column-head {
-    display: flex; align-items: center; gap: 4px; padding: 8px 10px;
+    display: flex; align-items: center; gap: 4px; padding: 8px 10px; flex-wrap: wrap;
     border-bottom: 1px solid var(--border);
   }
   .column-head .title { font-weight: 600; flex: 1 1 auto; cursor: text; }
@@ -1107,8 +1107,19 @@ const App = (function () {
         persist(); render();
       });
     };
-    head.appendChild(title); head.appendChild(num);
+    const swatch = el('input'); swatch.type = 'color'; swatch.value = col.color || '#c8ccd1';
+    swatch.title = 'List color';
+    swatch.style.cssText = 'width:22px; height:20px; padding:0; border:1px solid var(--border); border-radius:4px; flex:0 0 auto; cursor:pointer;';
+    swatch.onclick = (e) => e.stopPropagation();
+    swatch.oninput = (e) => { col.color = e.target.value; persist(); render(); };
+    head.appendChild(title); head.appendChild(num); head.appendChild(swatch);
+    if (col.color) {
+      const clr = el('button', 'iconbtn', '⊘'); clr.title = 'Clear list color';
+      clr.onclick = (e) => { e.stopPropagation(); delete col.color; persist(); render(); };
+      head.appendChild(clr);
+    }
     head.appendChild(left); head.appendChild(right); head.appendChild(pencil); head.appendChild(del);
+    if (col.color) wrap.style.borderTop = '3px solid ' + col.color;
     wrap.appendChild(head);
 
     const body = el('div', 'column-body'); body.dataset.col = col.id;
@@ -1158,7 +1169,8 @@ const App = (function () {
       data.columns.forEach(col => {
         const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && listMatch(data.tasks[tid]));
         if (!ids.length) return;
-        wrap.appendChild(el('div','list-group-title', escapeHtml(col.name) + ' · ' + ids.length));
+        const dot = col.color ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col.color + ';margin-right:6px;vertical-align:middle;"></span>' : '';
+        wrap.appendChild(el('div','list-group-title', dot + escapeHtml(col.name) + ' · ' + ids.length));
         ids.forEach((tid, i) => wrap.appendChild(renderCard(data.tasks[tid], col.id, i)));
       });
     } else {
