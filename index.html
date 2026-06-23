@@ -710,6 +710,61 @@ const App = (function () {
   function findDoneColumn() {
     return data.columns.find(c => /^\s*done\s*$/i.test(c.name || '')) || null;
   }
+  function isWorkColumn(colId) {
+    const c = data.columns.find(x => x.id === colId);
+    return !!(c && /^\s*work\s*$/i.test(c.name || ''));
+  }
+  // Create the next occurrence of a recurring task; returns its id (or null).
+  function spawnNextOccurrence(t, placeColId) {
+    if (!t.recur || t.recur === 'none') return null;
+    const next = JSON.parse(JSON.stringify(t));
+    next.id = id(); next.done = false; next.completedAt = null; next.archived = false;
+    next.createdAt = new Date().toISOString();
+    const basisDate = (t.recurBasis === 'completed') ? todayStr() : t.due;
+    next.due = computeNextDue(basisDate, t.recur, t.recurEvery);
+    next.subtasks = (next.subtasks || []).map(s => ({ id: s.id, title: s.title, done: false }));
+    next.start = null; next.blockedBy = [];
+    delete next._fromColumn;
+    data.tasks[next.id] = next;
+    const placeCol = placeColId || data.columns[0].id;
+    (data.order[placeCol] = data.order[placeCol] || []).unshift(next.id);
+    return next.id;
+  }
+  // Remove task ids from every in-session undo snapshot so they can't be restored.
+  function scrubUndo(ids) {
+    if (!ids || !ids.length) return;
+    for (let i = 0; i < undoStack.length; i++) {
+      try {
+        const s = JSON.parse(undoStack[i]); let changed = false;
+        ids.forEach(tid => {
+          if (s.tasks && s.tasks[tid]) {
+            delete s.tasks[tid];
+            if (s.order) for (const k in s.order) s.order[k] = s.order[k].filter(x => x !== tid);
+            changed = true;
+          }
+        });
+        if (changed) undoStack[i] = JSON.stringify(s);
+      } catch (e) {}
+    }
+  }
+  // Permanently delete a task: save, then scrub it from undo history (not recoverable in-session).
+  function hardDelete(taskId) { deleteTask(taskId); persist(); scrubUndo([taskId]); }
+
+  // Decide what "completing" a task means. Tasks in a "Work" list are deleted
+  // (after confirmation) instead of being marked done. Everything else toggles normally.
+  function onComplete(t, proceed) {
+    const colId = columnOf(t.id);
+    if (!t.done && isWorkColumn(colId)) {
+      uiConfirm('Complete and delete this Work task?', () => {
+        spawnNextOccurrence(t, colId);   // recurring Work tasks still respawn first
+        if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
+        hardDelete(t.id);
+        render();
+      });
+      return;
+    }
+    proceed();
+  }
   function toggleDone(t) {
     t.done = !t.done;
     t.completedAt = t.done ? new Date().toISOString() : null;
@@ -717,19 +772,7 @@ const App = (function () {
     const origin = columnOf(t.id);
     if (t.done) {
       // recurring task: spawn the next occurrence into its originating column
-      if (t.recur && t.recur !== 'none') {
-        const next = JSON.parse(JSON.stringify(t));
-        next.id = id(); next.done = false; next.completedAt = null; next.archived = false;
-        next.createdAt = new Date().toISOString();
-        const basisDate = (t.recurBasis === 'completed') ? todayStr() : t.due;
-        next.due = computeNextDue(basisDate, t.recur, t.recurEvery);
-        next.subtasks = (next.subtasks || []).map(s => ({ id: s.id, title: s.title, done: false }));
-        next.start = null; next.blockedBy = [];
-        delete next._fromColumn;
-        data.tasks[next.id] = next;
-        const placeCol = origin || data.columns[0].id;
-        (data.order[placeCol] = data.order[placeCol] || []).unshift(next.id);
-      }
+      spawnNextOccurrence(t, origin);
       // moving to Done: remember where it came from so we can restore it later
       if (doneCol && origin && origin !== doneCol.id) { t._fromColumn = origin; moveTask(t.id, doneCol.id); }
     } else {
@@ -1301,7 +1344,7 @@ const App = (function () {
     }
     const row = el('div', 'card-row');
     const cb = el('div', 'checkbox' + (t.done ? ' done' : ''));
-    cb.onclick = (e) => { e.stopPropagation(); toggleDone(t); persist(); render(); };
+    cb.onclick = (e) => { e.stopPropagation(); onComplete(t, () => { toggleDone(t); persist(); render(); }); };
     const title = el('div', 'card-title'); title.textContent = t.title || '(untitled)';
     row.appendChild(cb); row.appendChild(title);
     if (t.archived) {
@@ -1491,7 +1534,25 @@ const App = (function () {
 
     // bulk select mode
     $('#selectBtn').onclick = () => { selectMode = !selectMode; if (!selectMode) selectedIds.clear(); render(); };
-    $('#bulkComplete').onclick = () => bulkApply(t => { if (!t.done) toggleDone(t); });
+    $('#bulkComplete').onclick = () => {
+      const sel = [...selectedIds].map(i => data.tasks[i]).filter(Boolean);
+      const workIds = sel.filter(t => !t.done && isWorkColumn(columnOf(t.id))).map(t => t.id);
+      const apply = () => {
+        const deleted = [];
+        sel.forEach(t => {
+          if (!t.done && workIds.includes(t.id)) {
+            spawnNextOccurrence(t, columnOf(t.id));
+            deleteTask(t.id); selectedIds.delete(t.id); deleted.push(t.id);
+          } else if (!t.done) toggleDone(t);
+        });
+        persist();
+        scrubUndo(deleted);   // Work deletions are not recoverable in-session
+        render();
+      };
+      if (workIds.length) {
+        uiConfirm(workIds.length + ' Work task' + (workIds.length === 1 ? '' : 's') + ' will be deleted on completion; the rest will be completed. Continue?', apply);
+      } else apply();
+    };
     $('#bulkArchive').onclick = () => { selectedIds.forEach(i => { const t = data.tasks[i]; if (t) t.archived = true; }); selectedIds.clear(); persist(); render(); };
     $('#bulkMove').onchange = (e) => { const c = e.target.value; if (c) { selectedIds.forEach(i => moveTask(i, c)); persist(); render(); } };
     $('#bulkDelete').onclick = () => {
@@ -1533,12 +1594,14 @@ const App = (function () {
     $('#overlay').addEventListener('mousedown', (e) => { if (e.target.id === 'overlay') closeModal(); });
     $('#m_done').onclick = () => {
       const t = data.tasks[editingId]; if (!t) return;
-      toggleDone(t);
-      $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
-      // keep the List/Column dropdown in sync with any auto-move to Done,
-      // otherwise closing the modal would move the task back.
-      $('#m_column').value = columnOf(editingId) || $('#m_column').value;
-      persist();
+      onComplete(t, () => {
+        toggleDone(t);
+        $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
+        // keep the List/Column dropdown in sync with any auto-move to Done,
+        // otherwise closing the modal would move the task back.
+        $('#m_column').value = columnOf(editingId) || $('#m_column').value;
+        persist();
+      });
     };
     $('#m_title').onkeydown = (e) => { if (e.key === 'Enter') closeModal(); };
     ['m_due','m_priority','m_notes','m_column'].forEach(idn => { const e=document.getElementById(idn); e.onchange = commitModal; });
