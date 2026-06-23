@@ -251,7 +251,7 @@
       <option value="week">Next 7 days</option>
       <option value="none">No date</option>
     </select>
-    <select id="sortBy" title="Sort (list view)">
+    <select id="sortBy" title="Sort tasks within each list / column">
       <option value="manual">Manual order</option>
       <option value="due">Due date</option>
       <option value="priority">Priority</option>
@@ -1123,7 +1123,9 @@ const App = (function () {
     const title = el('div', 'title'); title.textContent = col.name; title.title = 'Click to rename';
     const rename = () => startRename(col, title);
     title.onclick = rename;
-    const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]));
+    let colTasks = (data.order[col.id] || []).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid])).map(tid => data.tasks[tid]);
+    if (filters.sort !== 'manual') colTasks = sortTasks(colTasks);   // sort within the column
+    const ids = colTasks.map(t => t.id);
     const num = el('span', 'num', String(ids.length));
 
     // move list left / right
