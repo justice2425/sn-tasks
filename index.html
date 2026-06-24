@@ -290,8 +290,11 @@
     <div class="modal-body">
       <div class="field-row">
         <div class="field">
-          <label>Due date</label>
-          <input id="m_due" type="date" />
+          <label>Due date / time</label>
+          <div style="display:flex; gap:6px;">
+            <input id="m_due" type="date" />
+            <input id="m_dueTime" type="time" style="max-width:118px;" title="Optional time" />
+          </div>
         </div>
         <div class="field">
           <label>Priority</label>
@@ -617,6 +620,7 @@ const App = (function () {
       if (typeof t.recurEvery === 'undefined') t.recurEvery = 1;
       if (typeof t.recurBasis === 'undefined') t.recurBasis = 'due';
       if (typeof t.start === 'undefined') t.start = null;
+      if (typeof t.dueTime === 'undefined') t.dueTime = null;
       if (!Array.isArray(t.blockedBy)) t.blockedBy = [];
     });
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
@@ -673,7 +677,7 @@ const App = (function () {
   /* ---- task helpers ---- */
   function newTask(title, columnId) {
     const t = {
-      id: id(), title: (title||'').trim(), notes:'', due:null, priority:0,
+      id: id(), title: (title||'').trim(), notes:'', due:null, dueTime:null, priority:0,
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[],
       createdAt: new Date().toISOString(), completedAt:null
@@ -817,6 +821,19 @@ const App = (function () {
     return d.toLocaleDateString(undefined, { month:'short', day:'numeric' });
   }
   function addDays(iso, n) { const d = new Date(iso + 'T00:00:00'); d.setDate(d.getDate() + n); return toISODate(d); }
+  function fmtTime(hhmm) {
+    if (!hhmm) return '';
+    const p = hhmm.split(':'); const d = new Date(); d.setHours(+p[0] || 0, +p[1] || 0, 0, 0);
+    return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  }
+  // sort key combining due date + time; timed tasks sort before all-day on the same date, undated last
+  function dueKey(t) { return (t.due || '9999-99-99') + 'T' + (t.dueTime || '99:99'); }
+  function to24(h, min, ap) {
+    h = parseInt(h, 10); min = min ? parseInt(min, 10) : 0;
+    if (ap) { ap = ap.toLowerCase(); if (ap === 'pm' && h < 12) h += 12; if (ap === 'am' && h === 12) h = 0; }
+    if (h > 23 || min > 59) return null;
+    return String(h).padStart(2, '0') + ':' + String(min).padStart(2, '0');
+  }
   function computeNextDue(dueStr, freq, every) {
     every = Math.max(1, parseInt(every, 10) || 1);
     const base = new Date((dueStr || todayStr()) + 'T00:00:00');
@@ -847,7 +864,7 @@ const App = (function () {
      ISO dates (2026-07-01); !high/!med/!low (or !1/!2/!3); #tag (repeatable). */
   function parseQuickAdd(raw) {
     let s = ' ' + (raw || '') + ' ';
-    const out = { title:'', due:null, priority:0, tags:[] };
+    const out = { title:'', due:null, dueTime:null, priority:0, tags:[] };
     s = s.replace(/\s#([^\s#]+)/g, (m, tag) => { out.tags.push(tag); return ' '; });
     s = s.replace(/\s!(?:high|h|3)\b/ig, () => { out.priority = 3; return ' '; });
     s = s.replace(/\s!(?:med|medium|m|2)\b/ig, () => { out.priority = 2; return ' '; });
@@ -869,6 +886,12 @@ const App = (function () {
           return ' ';
         });
     }
+    // optional time: "at 3pm", "3:30pm", "15:00", "at 15"
+    let tm = null;
+    s = s.replace(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i, (m, h, mi, ap) => { const v = to24(h, mi, ap); if (v) { tm = v; return ' '; } return m; });
+    if (tm === null) s = s.replace(/\b(\d{1,2}):(\d{2})\s*(am|pm)?\b/i, (m, h, mi, ap) => { const v = to24(h, mi, ap); if (v) { tm = v; return ' '; } return m; });
+    if (tm === null) s = s.replace(/\b(\d{1,2})\s*(am|pm)\b/i, (m, h, ap) => { const v = to24(h, null, ap); if (v) { tm = v; return ' '; } return m; });
+    if (tm) { out.dueTime = tm; if (!out.due) out.due = today; }
     out.title = s.replace(/\s+/g, ' ').trim();
     return out;
   }
@@ -1038,7 +1061,7 @@ const App = (function () {
   function sortTasks(tasks) {
     const s = filters.sort;
     const arr = tasks.slice();
-    if (s === 'due') arr.sort((a,b)=> (a.due||'9999').localeCompare(b.due||'9999'));
+    if (s === 'due') arr.sort((a,b)=> dueKey(a).localeCompare(dueKey(b)));
     else if (s === 'priority') arr.sort((a,b)=> b.priority - a.priority);
     else if (s === 'created') arr.sort((a,b)=> (a.createdAt||'').localeCompare(b.createdAt||''));
     else if (s === 'alpha') arr.sort((a,b)=> a.title.localeCompare(b.title));
@@ -1176,7 +1199,7 @@ const App = (function () {
       if (e.key === 'Enter' && qi.value.trim()) {
         const p = parseQuickAdd(qi.value);
         const t = newTask(p.title, col.id);
-        t.due = p.due; t.priority = p.priority; t.tags = p.tags; p.tags.forEach(ensureTagColor);
+        t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; p.tags.forEach(ensureTagColor);
         persist(); qi.value = ''; render();
       }
     };
@@ -1249,7 +1272,7 @@ const App = (function () {
       items.forEach(t => assigned.add(t.id));
       if (!items.length) return;
       any = true;
-      items.sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || b.priority - a.priority);
+      items.sort((a, b) => dueKey(a).localeCompare(dueKey(b)) || b.priority - a.priority);
       wrap.appendChild(el('div', 'list-group-title', g.label + ' · ' + items.length));
       items.forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
     });
@@ -1272,7 +1295,7 @@ const App = (function () {
     const grid = el('div', 'matrix');
     quads.forEach(q => {
       const cell = el('div', 'matrix-cell');
-      const items = tasks.filter(q.test).sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || b.priority - a.priority);
+      const items = tasks.filter(q.test).sort((a, b) => dueKey(a).localeCompare(dueKey(b)) || b.priority - a.priority);
       cell.appendChild(el('div', 'list-group-title', q.label + ' · ' + items.length));
       if (!items.length) cell.appendChild(el('div', 'small', '—'));
       items.forEach(t => cell.appendChild(renderCard(t, columnOf(t.id), 0)));
@@ -1362,7 +1385,8 @@ const App = (function () {
     if (t.due) {
       const st = dueState(t.due);
       const cls = st === 'over' ? 'badge due-over' : st === 'today' ? 'badge due-today' : 'badge';
-      badges.push('<span class="'+cls+'">'+ icon('calendar') + escapeHtml(fmtDue(t.due)) +'</span>');
+      const dueLabel = fmtDue(t.due) + (t.dueTime ? ' ' + fmtTime(t.dueTime) : '');
+      badges.push('<span class="'+cls+'">'+ icon('calendar') + escapeHtml(dueLabel) +'</span>');
     }
     if (t.priority > 0) badges.push('<span class="badge">'+ PRIO[t.priority].label +'</span>');
     if (t.subtasks.length) {
@@ -1405,6 +1429,7 @@ const App = (function () {
     $('#m_title').value = t.title;
     $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
     $('#m_due').value = t.due || '';
+    $('#m_dueTime').value = t.dueTime || '';
     $('#m_priority').value = String(t.priority);
     $('#m_recur').value = t.recur || 'none';
     $('#m_recurEvery').value = t.recurEvery || 1;
@@ -1431,6 +1456,7 @@ const App = (function () {
     const t = data.tasks[editingId]; if (!t) return;
     t.title = $('#m_title').value.trim();
     t.due = $('#m_due').value || null;
+    t.dueTime = (t.due && $('#m_dueTime').value) ? $('#m_dueTime').value : null;
     t.priority = parseInt($('#m_priority').value, 10) || 0;
     t.recur = $('#m_recur').value;
     t.recurEvery = Math.max(1, parseInt($('#m_recurEvery').value, 10) || 1);
@@ -1606,7 +1632,7 @@ const App = (function () {
       });
     };
     $('#m_title').onkeydown = (e) => { if (e.key === 'Enter') closeModal(); };
-    ['m_due','m_priority','m_notes','m_column'].forEach(idn => { const e=document.getElementById(idn); e.onchange = commitModal; });
+    ['m_due','m_dueTime','m_priority','m_notes','m_column'].forEach(idn => { const e=document.getElementById(idn); e.onchange = commitModal; });
     $('#m_subInput').onkeydown = (e) => {
       if (e.key === 'Enter' && e.target.value.trim()) {
         const t = data.tasks[editingId];
