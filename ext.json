@@ -3,7 +3,7 @@
   "name": "Tasks",
   "content_type": "SN|Component",
   "area": "editor-editor",
-  "version": "1.9.0",
+  "version": "1.10.1",
   "description": "A Todoist-style task manager for Standard Notes: list and kanban board views, due dates, priorities, tags, per-task notes, subtasks, and links. All data is stored inside the note and protected by Standard Notes' end-to-end encryption.",
   "url": "https://justice2425.github.io/sn-tasks/index.html",
   "download_url": "https://justice2425.github.io/sn-tasks/index.html",
