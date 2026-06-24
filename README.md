@@ -46,12 +46,6 @@ Current version: **1.9.0**
 - **Stats panel** — completion rate, active/completed/overdue/due-today counts, done-in-last-7-days, and breakdowns by priority and tag.
 - **Due-today banner** — on opening a board, a dismissible summary of overdue + due-today items.
 
-### Name-based automations
-Two behaviors trigger off a column's **name** (case-insensitive), the same way:
-- **A list named "Done"** — completing a task auto-moves it there (and un-completing sends it back to where it came from).
-- **A list named "Work"** — completing a task there asks to confirm, then **permanently deletes** it (recurring Work tasks still spawn their next occurrence first). See "Deletion & recoverability" below.
-
-Rename these lists and the corresponding behavior simply turns off until a list has that name again.
 
 ---
 
@@ -98,7 +92,6 @@ Run a local server (`python3 -m http.server`) and open `test-harness.html`. It s
 ## Deletion & recoverability
 - Deleting a task removes it from the note's JSON and saves the note without it. There is no in-app trash.
 - **Undo** holds snapshots in memory for the session. Normal deletes are undoable until you reload. **"Work" deletions are hard**: they're scrubbed from the in-session undo history and cannot be brought back with Undo.
-- **Important caveat:** Standard Notes keeps its own **note revision history** (server-side, retention depends on your plan). The plugin cannot see or purge that, so an old revision of the note could still contain a "deleted" task. For a truly unrecoverable deletion you'd also need to clear that note's revision history in Standard Notes and remove it from any backups.
 
 ---
 
