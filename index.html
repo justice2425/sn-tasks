@@ -345,6 +345,10 @@
         </div>
       </div>
       <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="m_pin" style="width:auto; margin:0;" />
+        Pin to top of its list
+      </label>
+      <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" id="m_hideList" style="width:auto; margin:0;" />
         Hide this task from the List view (it still appears on the Board)
       </label>
@@ -621,6 +625,7 @@ const App = (function () {
       if (typeof t.recurBasis === 'undefined') t.recurBasis = 'due';
       if (typeof t.start === 'undefined') t.start = null;
       if (typeof t.dueTime === 'undefined') t.dueTime = null;
+      if (typeof t.pinned === 'undefined') t.pinned = false;
       if (!Array.isArray(t.blockedBy)) t.blockedBy = [];
     });
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
@@ -679,7 +684,7 @@ const App = (function () {
     const t = {
       id: id(), title: (title||'').trim(), notes:'', due:null, dueTime:null, priority:0,
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
-      recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[],
+      recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -1058,6 +1063,12 @@ const App = (function () {
     if (filters.status === 'all' && data.ui.hideCompletedInList && t.done) return false; // global "hide done"
     return true;
   }
+  // Stable: pinned tasks first, everything else in its existing order.
+  function arrangePinned(tasks) {
+    const pinned = [], rest = [];
+    tasks.forEach(t => (t.pinned ? pinned : rest).push(t));
+    return pinned.concat(rest);
+  }
   function sortTasks(tasks) {
     const s = filters.sort;
     const arr = tasks.slice();
@@ -1148,6 +1159,7 @@ const App = (function () {
     title.onclick = rename;
     let colTasks = (data.order[col.id] || []).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid])).map(tid => data.tasks[tid]);
     if (filters.sort !== 'manual') colTasks = sortTasks(colTasks);   // sort within the column
+    colTasks = arrangePinned(colTasks);                              // pinned tasks float to top
     const ids = colTasks.map(t => t.id);
     const num = el('span', 'num', String(ids.length));
 
@@ -1195,15 +1207,17 @@ const App = (function () {
     const qa = el('div', 'quickadd');
     const qi = el('input'); qi.type = 'text'; qi.placeholder = '+ Add task';
     qi.title = 'Try: Pay rent tomorrow !high #finance';
-    qi.onkeydown = (e) => {
-      if (e.key === 'Enter' && qi.value.trim()) {
-        const p = parseQuickAdd(qi.value);
-        const t = newTask(p.title, col.id);
-        t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; p.tags.forEach(ensureTagColor);
-        persist(); qi.value = ''; render();
-      }
+    const addNow = () => {
+      if (!qi.value.trim()) { qi.focus(); return; }
+      const p = parseQuickAdd(qi.value);
+      const t = newTask(p.title, col.id);
+      t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; p.tags.forEach(ensureTagColor);
+      persist(); qi.value = ''; render();
     };
-    qa.appendChild(qi); body.appendChild(qa);
+    qi.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addNow(); } };
+    const addBtn = el('button', 'primary', 'Add'); addBtn.style.flex = '0 0 auto';
+    addBtn.onclick = (e) => { e.stopPropagation(); addNow(); };
+    qa.appendChild(qi); qa.appendChild(addBtn); body.appendChild(qa);
 
     ids.forEach((tid, index) => body.appendChild(renderCard(data.tasks[tid], col.id, index)));
 
@@ -1239,10 +1253,10 @@ const App = (function () {
         if (!ids.length) return;
         const dot = col.color ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col.color + ';margin-right:6px;vertical-align:middle;"></span>' : '';
         wrap.appendChild(el('div','list-group-title', dot + escapeHtml(col.name) + ' · ' + ids.length));
-        ids.forEach((tid, i) => wrap.appendChild(renderCard(data.tasks[tid], col.id, i)));
+        arrangePinned(ids.map(tid => data.tasks[tid])).forEach((t, i) => wrap.appendChild(renderCard(t, col.id, i)));
       });
     } else {
-      sortTasks(all).forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
+      arrangePinned(sortTasks(all)).forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
     }
     return wrap;
   }
@@ -1274,7 +1288,7 @@ const App = (function () {
       any = true;
       items.sort((a, b) => dueKey(a).localeCompare(dueKey(b)) || b.priority - a.priority);
       wrap.appendChild(el('div', 'list-group-title', g.label + ' · ' + items.length));
-      items.forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
+      arrangePinned(items).forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
     });
     if (!any) wrap.appendChild(el('div', 'empty', 'No tasks to show.'));
     return wrap;
@@ -1298,7 +1312,7 @@ const App = (function () {
       const items = tasks.filter(q.test).sort((a, b) => dueKey(a).localeCompare(dueKey(b)) || b.priority - a.priority);
       cell.appendChild(el('div', 'list-group-title', q.label + ' · ' + items.length));
       if (!items.length) cell.appendChild(el('div', 'small', '—'));
-      items.forEach(t => cell.appendChild(renderCard(t, columnOf(t.id), 0)));
+      arrangePinned(items).forEach(t => cell.appendChild(renderCard(t, columnOf(t.id), 0)));
       grid.appendChild(cell);
     });
     return grid;
@@ -1372,6 +1386,11 @@ const App = (function () {
     cb.onclick = (e) => { e.stopPropagation(); onComplete(t, () => { toggleDone(t); persist(); render(); }); };
     const title = el('div', 'card-title'); title.textContent = t.title || '(untitled)';
     row.appendChild(cb); row.appendChild(title);
+    const pin = el('button', 'iconbtn'); pin.textContent = '📌';
+    pin.title = t.pinned ? 'Unpin' : 'Pin to top';
+    pin.style.cssText = 'flex:0 0 auto; padding:0 4px; opacity:' + (t.pinned ? '1' : '.3') + ';';
+    pin.onclick = (e) => { e.stopPropagation(); t.pinned = !t.pinned; persist(); render(); };
+    row.appendChild(pin);
     if (t.archived) {
       const un = el('button', 'ghost', 'Unarchive');
       un.style.cssText = 'flex:0 0 auto; font-size:11px; padding:2px 8px;';
@@ -1435,6 +1454,7 @@ const App = (function () {
     $('#m_recurEvery').value = t.recurEvery || 1;
     $('#m_recurBasis').value = t.recurBasis || 'due';
     $('#m_start').value = t.start || '';
+    $('#m_pin').checked = !!t.pinned;
     $('#m_hideList').checked = !!t.hideFromList;
     $('#m_notes').value = t.notes || '';
     // always start notes in edit mode
@@ -1462,6 +1482,7 @@ const App = (function () {
     t.recurEvery = Math.max(1, parseInt($('#m_recurEvery').value, 10) || 1);
     t.recurBasis = $('#m_recurBasis').value;
     t.start = $('#m_start').value || null;
+    t.pinned = $('#m_pin').checked;
     t.hideFromList = $('#m_hideList').checked;
     t.notes = $('#m_notes').value;
     const newCol = $('#m_column').value;
@@ -1537,6 +1558,7 @@ const App = (function () {
     $('#sortBy').onchange = (e) => { filters.sort = e.target.value; render(); };
     $('#hideDone').onchange = (e) => { data.ui.hideCompletedInList = e.target.checked; saveOut(); render(); };
     $('#m_hideList').onchange = commitModal;
+    $('#m_pin').onchange = commitModal;
     $('#m_recur').onchange = commitModal;
     $('#m_recurEvery').onchange = commitModal;
     $('#m_recurBasis').onchange = commitModal;
