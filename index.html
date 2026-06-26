@@ -381,9 +381,12 @@
     <div class="modal-foot">
       <span style="display:flex; gap:8px;">
         <button class="danger" id="m_delete">Delete</button>
-        <button class="ghost" id="m_archive">Archive</button>
+        <button class="ghost" id="m_complete">Complete</button>
       </span>
-      <span class="small" id="m_meta"></span>
+      <span style="display:flex; gap:10px; align-items:center;">
+        <span class="small" id="m_meta"></span>
+        <button class="primary" id="m_save">Save &amp; Close</button>
+      </span>
     </div>
   </div>
 </div>
@@ -604,6 +607,7 @@ const App = (function () {
       } catch (e) {}
     }
     sanitize();
+    filters.sort = data.ui.sort || 'due';   // persisted sort; default to due date
     lastSerialized = JSON.stringify(data);
     undoStack.length = 0;
     summaryDismissed = false;
@@ -719,9 +723,9 @@ const App = (function () {
   function findDoneColumn() {
     return data.columns.find(c => /^\s*done\s*$/i.test(c.name || '')) || null;
   }
-  function isWorkColumn(colId) {
+  function isImportantColumn(colId) {
     const c = data.columns.find(x => x.id === colId);
-    return !!(c && /^\s*work\s*$/i.test(c.name || ''));
+    return !!(c && /^\s*important\s*$/i.test(c.name || ''));
   }
   // Create the next occurrence of a recurring task; returns its id (or null).
   function spawnNextOccurrence(t, placeColId) {
@@ -763,12 +767,22 @@ const App = (function () {
   // (after confirmation) instead of being marked done. Everything else toggles normally.
   function onComplete(t, proceed) {
     const colId = columnOf(t.id);
-    if (!t.done && isWorkColumn(colId)) {
-      uiConfirm('Complete and delete this Work task?', () => {
-        spawnNextOccurrence(t, colId);   // recurring Work tasks still respawn first
+    // Only intercept when completing (checking). Un-checking always toggles normally.
+    if (!t.done) {
+      if (isImportantColumn(colId)) {
+        uiConfirm('Complete and delete this Important task?', () => {
+          spawnNextOccurrence(t, colId);   // recurring tasks still respawn first
+          if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
+          hardDelete(t.id);
+          render();
+        });
+        return;
+      }
+      // Any other list: confirm, then complete (mark done + move to a "Done" column).
+      uiConfirm('Mark this task complete?', () => {
+        toggleDone(t);          // marks done, spawns any recurrence, moves to a Done column
         if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
-        hardDelete(t.id);
-        render();
+        persist(); render();
       });
       return;
     }
@@ -1097,6 +1111,7 @@ const App = (function () {
     renderTagFilter();
     renderSmartViews();
     const ub = $('#undoBtn'); if (ub) { ub.disabled = !undoStack.length; ub.style.opacity = undoStack.length ? '1' : '.4'; }
+    $('#sortBy').value = filters.sort;
     const inView = data.ui.view === 'list' ? listMatch : matchesFilters;
     const visible = Object.values(data.tasks).filter(inView).length;
     const total = Object.keys(data.tasks).length;
@@ -1465,8 +1480,7 @@ const App = (function () {
     sel.value = columnOf(taskId) || data.columns[0].id;
     renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t);
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
-    $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '');
-    $('#m_archive').textContent = t.archived ? 'Unarchive' : 'Archive';
+    $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '') + (t.done ? ' · done' : '');
     $('#overlay').classList.add('open');
     $('#m_title').focus();
   }
@@ -1555,7 +1569,7 @@ const App = (function () {
     $('#search').oninput = (e) => { filters.search = e.target.value; render(); };
     $('#statusFilter').onchange = (e) => { filters.status = e.target.value; activeSmart = null; render(); };
     $('#dueFilter').onchange = (e) => { filters.due = e.target.value; activeSmart = null; render(); };
-    $('#sortBy').onchange = (e) => { filters.sort = e.target.value; render(); };
+    $('#sortBy').onchange = (e) => { filters.sort = e.target.value; data.ui.sort = e.target.value; saveOut(); render(); };
     $('#hideDone').onchange = (e) => { data.ui.hideCompletedInList = e.target.checked; saveOut(); render(); };
     $('#m_hideList').onchange = commitModal;
     $('#m_pin').onchange = commitModal;
@@ -1586,22 +1600,28 @@ const App = (function () {
     $('#selectBtn').onclick = () => { selectMode = !selectMode; if (!selectMode) selectedIds.clear(); render(); };
     $('#bulkComplete').onclick = () => {
       const sel = [...selectedIds].map(i => data.tasks[i]).filter(Boolean);
-      const workIds = sel.filter(t => !t.done && isWorkColumn(columnOf(t.id))).map(t => t.id);
+      const delIds = sel.filter(t => !t.done && isImportantColumn(columnOf(t.id))).map(t => t.id);
+      const doneN = sel.filter(t => !t.done && !isImportantColumn(columnOf(t.id))).length;
+      if (!delIds.length && !doneN) return;   // nothing to complete
       const apply = () => {
         const deleted = [];
         sel.forEach(t => {
-          if (!t.done && workIds.includes(t.id)) {
+          if (t.done) return;
+          if (delIds.includes(t.id)) {
             spawnNextOccurrence(t, columnOf(t.id));
             deleteTask(t.id); selectedIds.delete(t.id); deleted.push(t.id);
-          } else if (!t.done) toggleDone(t);
+          } else {
+            toggleDone(t);   // complete + move to Done column
+          }
         });
         persist();
-        scrubUndo(deleted);   // Work deletions are not recoverable in-session
+        scrubUndo(deleted);   // Important-list deletions are not recoverable in-session
         render();
       };
-      if (workIds.length) {
-        uiConfirm(workIds.length + ' Work task' + (workIds.length === 1 ? '' : 's') + ' will be deleted on completion; the rest will be completed. Continue?', apply);
-      } else apply();
+      const parts = [];
+      if (delIds.length) parts.push(delIds.length + ' Important deleted');
+      if (doneN) parts.push(doneN + ' completed');
+      uiConfirm('Complete the selected tasks? (' + parts.join(', ') + ')', apply);
     };
     $('#bulkArchive').onclick = () => { selectedIds.forEach(i => { const t = data.tasks[i]; if (t) t.archived = true; }); selectedIds.clear(); persist(); render(); };
     $('#bulkMove').onchange = (e) => { const c = e.target.value; if (c) { selectedIds.forEach(i => moveTask(i, c)); persist(); render(); } };
@@ -1641,6 +1661,7 @@ const App = (function () {
     };
     // modal
     $('#m_close').onclick = closeModal;
+    $('#m_save').onclick = closeModal;
     $('#overlay').addEventListener('mousedown', (e) => { if (e.target.id === 'overlay') closeModal(); });
     $('#m_done').onclick = () => {
       const t = data.tasks[editingId]; if (!t) return;
@@ -1676,10 +1697,10 @@ const App = (function () {
         deleteTask(tid); editingId=null; $('#overlay').classList.remove('open'); persist(); render();
       });
     };
-    $('#m_archive').onclick = () => {
+    $('#m_complete').onclick = () => {
       const t = data.tasks[editingId]; if (!t) return;
-      t.archived = !t.archived;
-      editingId = null; $('#overlay').classList.remove('open'); persist(); render();
+      if (t.done) { closeModal(); return; }   // already complete
+      onComplete(t, () => { toggleDone(t); editingId = null; $('#overlay').classList.remove('open'); persist(); render(); });
     };
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#overlay').classList.contains('open')) closeModal(); });
     // flush on unload
