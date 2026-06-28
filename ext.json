@@ -1,11 +1,9 @@
 {
-  "identifier": "com.justice2425.tasks",
-  "name": "Tasks",
+  "identifier": "dev.cowork.kids-chess-tutor",
+  "name": "Chess Tutor",
+  "description": "A friendly, complete chess teacher for kids: illustrated lessons, checkmate puzzles, a daily challenge, and games against a leveled computer opponent with move hints. Earn XP and climb the ranks. Works fully offline; progress is saved in the note.",
   "content_type": "SN|Component",
   "area": "editor-editor",
-  "version": "1.14.1",
-  "description": "A Todoist-style task manager for Standard Notes: list and kanban board views, due dates, priorities, tags, per-task notes, subtasks, and links. All data is stored inside the note and protected by Standard Notes' end-to-end encryption.",
-  "url": "https://justice2425.github.io/sn-tasks/index.html",
-  "download_url": "https://justice2425.github.io/sn-tasks/index.html",
-  "latest_url": "https://justice2425.github.io/sn-tasks/ext.json"
+  "version": "1.0.1",
+  "url": "https://justice2425.github.io/chess-tutor/index.html"
 }
