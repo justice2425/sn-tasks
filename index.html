@@ -1367,7 +1367,7 @@ const App = (function () {
     wrap.appendChild(head);
     // tasks with a due date this view, honoring current filters
     const byDate = {};
-    Object.values(data.tasks).forEach(t => { if (t.archived || !t.due || !matchesFilters(t)) return; (byDate[t.due] = byDate[t.due] || []).push(t); });
+    Object.values(data.tasks).forEach(t => { if (t.archived || t.done || !t.due || !matchesFilters(t)) return; (byDate[t.due] = byDate[t.due] || []).push(t); });
     const grid = el('div', 'cv');
     ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(l => grid.appendChild(el('div', 'cv-dow', l)));
     const firstDow = (new Date(year, mon, 1).getDay() + 6) % 7;
