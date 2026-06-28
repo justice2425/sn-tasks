@@ -154,7 +154,7 @@
   .field-row { display: flex; gap: 10px; }
   .field-row > .field { flex: 1; }
 
-  .subtasks .sub-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .subtasks .sub-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
   .subtasks .sub-item input[type=text] { flex: 1; }
   .links .link-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .links .link-item input { flex: 1; }
@@ -204,6 +204,23 @@
   /* eisenhower matrix */
   .matrix { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
   .matrix-cell { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px; min-height: 90px; }
+
+  /* calendar view */
+  .cv-head { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .cv-head .t { font-weight:600; min-width:150px; }
+  .cv { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .cv-dow { text-align:center; font-size:11px; color:var(--muted); }
+  .cv-cell { border:1px solid var(--border); border-radius:6px; min-height:86px; padding:4px; display:flex; flex-direction:column; gap:3px; }
+  .cv-cell.empty { border:none; }
+  .cv-cell.caltoday { outline:2px solid var(--accent); outline-offset:-2px; }
+  .cv-top { display:flex; align-items:center; justify-content:space-between; }
+  .cv-num { font-size:11px; color:var(--muted); }
+  .cv-add { font-size:13px; color:var(--muted-2); cursor:pointer; line-height:1; padding:0 3px; }
+  .cv-add:hover { color:var(--accent); }
+  .cv-chip { font-size:11px; padding:1px 5px; border-radius:4px; background:var(--panel); border-left:3px solid var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
+  .cv-chip.done { text-decoration:line-through; color:var(--muted); }
+  .cv-more { font-size:10px; color:var(--muted-2); }
+  @media (max-width:620px){ .cv-cell { min-height:58px; } .cv-chip { font-size:10px; } }
   @media (max-width: 620px) { .matrix { grid-template-columns: 1fr; } }
 
   /* smart view chips */
@@ -226,6 +243,7 @@
       <button data-view="list">List</button>
       <button data-view="kanban">Board</button>
       <button data-view="agenda">Agenda</button>
+      <button data-view="calendar">Calendar</button>
       <button data-view="matrix">Matrix</button>
     </div>
     <input class="search" id="search" type="search" placeholder="Search tasks…" />
@@ -577,6 +595,7 @@ const App = (function () {
   let lastSerialized = null;         // last saved serialization, used for undo capture
   let summaryDismissed = false;      // "due today" banner dismissed this session
   let activeSmart = null;            // currently active smart-view chip
+  let calMonthOffset = 0;            // calendar view month offset (0 = current)
 
   const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0 };
 
@@ -1122,6 +1141,7 @@ const App = (function () {
     if (data.ui.view === 'kanban') surface.appendChild(renderKanban());
     else if (data.ui.view === 'agenda') surface.appendChild(renderAgenda());
     else if (data.ui.view === 'matrix') surface.appendChild(renderMatrix());
+    else if (data.ui.view === 'calendar') surface.appendChild(renderCalendar());
     else surface.appendChild(renderList());
 
     const selBtn = $('#selectBtn');
@@ -1333,6 +1353,48 @@ const App = (function () {
     return grid;
   }
 
+  /* ---- Calendar (month) view ---- */
+  function renderCalendar() {
+    const wrap = el('div'); const today = todayStr();
+    const base = new Date(today + 'T00:00:00'); base.setDate(1); base.setMonth(base.getMonth() + calMonthOffset);
+    const year = base.getFullYear(), mon = base.getMonth();
+    const head = el('div', 'cv-head');
+    const prev = el('button', 'iconbtn', '◀'); prev.title = 'Previous month'; prev.onclick = () => { calMonthOffset--; render(); };
+    const next = el('button', 'iconbtn', '▶'); next.title = 'Next month'; next.onclick = () => { calMonthOffset++; render(); };
+    const title = el('div', 't', base.toLocaleDateString(undefined, { month:'long', year:'numeric' }));
+    const todayBtn = el('button', 'ghost', 'Today'); todayBtn.onclick = () => { calMonthOffset = 0; render(); };
+    head.appendChild(prev); head.appendChild(title); head.appendChild(next); head.appendChild(todayBtn);
+    wrap.appendChild(head);
+    // tasks with a due date this view, honoring current filters
+    const byDate = {};
+    Object.values(data.tasks).forEach(t => { if (t.archived || !t.due || !matchesFilters(t)) return; (byDate[t.due] = byDate[t.due] || []).push(t); });
+    const grid = el('div', 'cv');
+    ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(l => grid.appendChild(el('div', 'cv-dow', l)));
+    const firstDow = (new Date(year, mon, 1).getDay() + 6) % 7;
+    for (let i = 0; i < firstDow; i++) grid.appendChild(el('div', 'cv-cell empty'));
+    const dim = new Date(year, mon + 1, 0).getDate();
+    for (let dnum = 1; dnum <= dim; dnum++) {
+      const dstr = toISODate(new Date(year, mon, dnum));
+      const cell = el('div', 'cv-cell' + (dstr === today ? ' caltoday' : ''));
+      const top = el('div', 'cv-top'); top.appendChild(el('div', 'cv-num', String(dnum)));
+      const add = el('div', 'cv-add', '+'); add.title = 'Add a task due ' + dstr;
+      add.onclick = () => { const t = newTask('', data.columns[0].id); t.due = dstr; persist(); render(); openModal(t.id); };
+      top.appendChild(add); cell.appendChild(top);
+      const items = (byDate[dstr] || []).slice().sort((a, b) => b.priority - a.priority);
+      items.slice(0, 4).forEach(t => {
+        const chip = el('div', 'cv-chip' + (t.done ? ' done' : ''), escapeHtml(t.title || '(untitled)'));
+        const col = data.columns.find(c => c.id === columnOf(t.id));
+        chip.style.borderLeftColor = (t.priority > 0 ? PRIO[t.priority].color : (col && col.color ? col.color : 'var(--accent)'));
+        chip.onclick = () => openModal(t.id); cell.appendChild(chip);
+      });
+      if (items.length > 4) cell.appendChild(el('div', 'cv-more', '+' + (items.length - 4) + ' more'));
+      grid.appendChild(cell);
+    }
+    wrap.appendChild(grid);
+    wrap.appendChild(el('div', 'small', 'Tasks shown on their due date. Tap + to add one for that day; tap a task to open it.'));
+    return wrap;
+  }
+
   /* ---- Stats ---- */
   function openStats() {
     const all = Object.values(data.tasks).filter(t => !t.archived);
@@ -1532,12 +1594,25 @@ const App = (function () {
     t.subtasks.forEach((s, i) => {
       const row = el('div','sub-item');
       const cb = el('div','checkbox'+(s.done?' done':'')); cb.onclick = () => { s.done=!s.done; persist(); render(); };
-      const inp = el('input'); inp.type='text'; inp.value=s.title;
+      const inp = el('input'); inp.type='text'; inp.value=s.title; inp.style.minWidth='120px';
       inp.oninput = () => { s.title = inp.value; persist(); };
-      const x = el('button','iconbtn','✕'); x.onclick = () => { t.subtasks.splice(i,1); persist(); renderModalSubtasks(t); render(); };
-      row.appendChild(cb); row.appendChild(inp); row.appendChild(x);
+      const due = el('input'); due.type='date'; due.value=s.due||''; due.title='Subtask due date'; due.style.cssText='width:140px; flex:0 0 auto;';
+      due.onchange = () => { s.due = due.value || null; persist(); };
+      const up = el('button','iconbtn','↑'); up.title='Move up'; up.onclick = () => { if(i>0){ const a=t.subtasks; const tmp=a[i-1]; a[i-1]=a[i]; a[i]=tmp; persist(); renderModalSubtasks(t); } };
+      const down = el('button','iconbtn','↓'); down.title='Move down'; down.onclick = () => { if(i<t.subtasks.length-1){ const a=t.subtasks; const tmp=a[i+1]; a[i+1]=a[i]; a[i]=tmp; persist(); renderModalSubtasks(t); } };
+      const prom = el('button','iconbtn','⤴'); prom.title='Promote to its own task'; prom.onclick = () => promoteSubtask(t,i);
+      const x = el('button','iconbtn','✕'); x.title='Delete subtask'; x.onclick = () => { t.subtasks.splice(i,1); persist(); renderModalSubtasks(t); render(); };
+      row.appendChild(cb); row.appendChild(inp); row.appendChild(due); row.appendChild(up); row.appendChild(down); row.appendChild(prom); row.appendChild(x);
       box.appendChild(row);
     });
+  }
+  function promoteSubtask(parent, i) {
+    const s = parent.subtasks[i]; if (!s) return;
+    const col = columnOf(parent.id) || data.columns[0].id;
+    const nt = newTask(s.title || '(untitled)', col);
+    nt.due = s.due || null; nt.done = !!s.done; nt.completedAt = nt.done ? new Date().toISOString() : null;
+    parent.subtasks.splice(i, 1);
+    persist(); render(); renderModalSubtasks(parent);
   }
   function renderModalLinks(t) {
     const box = $('#m_links'); box.innerHTML = '';
@@ -1655,6 +1730,7 @@ const App = (function () {
       else if (e.key === '2') { data.ui.view = 'kanban'; saveOut(); render(); }
       else if (e.key === '3') { data.ui.view = 'agenda'; saveOut(); render(); }
       else if (e.key === '4') { data.ui.view = 'matrix'; saveOut(); render(); }
+      else if (e.key === '5') { data.ui.view = 'calendar'; saveOut(); render(); }
     });
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
