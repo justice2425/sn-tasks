@@ -64,7 +64,13 @@
     padding: 8px 12px; border-bottom: 1px solid var(--border); background: var(--panel);
   }
   .toolbar .grow { flex: 1 1 auto; }
-  .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg { display: inline-flex; flex-wrap: wrap; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .pal-item { display:flex; align-items:center; gap:10px; padding:9px 14px; cursor:pointer; border-top:1px solid var(--border); }
+  .pal-item:first-child { border-top:none; }
+  .pal-item.sel { background:var(--panel); }
+  .pal-item .pi-ic { width:18px; text-align:center; flex:0 0 auto; color:var(--muted); }
+  .pal-item .pi-main { flex:1; }
+  .pal-item .pi-sub { font-size:12px; color:var(--muted); }
   .seg button { border-radius: 0; border: none; padding: 5px 12px; }
   .seg button.active { background: var(--accent); color: var(--accent-fg); }
   .search { max-width: 240px; }
@@ -245,10 +251,12 @@
       <button data-view="agenda">Agenda</button>
       <button data-view="calendar">Calendar</button>
       <button data-view="matrix">Matrix</button>
+      <button data-view="focus">Focus</button>
     </div>
     <input class="search" id="search" type="search" placeholder="Search tasks…" />
     <span class="grow"></span>
     <span class="count" id="count"></span>
+    <button class="ghost" id="speakBtn" title="Read today aloud">🔊</button>
     <button class="ghost" id="undoBtn" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
     <button class="ghost" id="selectBtn" title="Select multiple tasks">Select</button>
     <button class="ghost" id="statsBtn" title="Board statistics & actions">Stats</button>
@@ -294,6 +302,16 @@
     <button class="ghost" id="bulkArchive">Archive</button>
     <button class="danger" id="bulkDelete">Delete</button>
     <button class="ghost" id="bulkClear">Done</button>
+  </div>
+</div>
+
+<!-- Command palette -->
+<div class="overlay" id="paletteOverlay">
+  <div class="modal" style="max-width:520px;">
+    <div style="padding:10px 12px; border-bottom:1px solid var(--border);">
+      <input id="pal_input" type="text" placeholder="Type a task to add, or a command (view, filter, find)…" style="width:100%; border:none; background:transparent; font-size:15px; outline:none;" />
+    </div>
+    <div id="pal_list" style="max-height:340px; overflow:auto;"></div>
   </div>
 </div>
 
@@ -638,6 +656,7 @@ const App = (function () {
     d.order = d.order || {};
     d.tags = d.tags || {};
     d.ui = d.ui || { view:'list' };
+    d.templates = d.templates || [];
     if (!d.columns || !d.columns.length) d.columns = defaultData().columns;
     // ensure newer flags exist on tasks/ui created by older versions
     Object.values(d.tasks).forEach(t => {
@@ -902,7 +921,7 @@ const App = (function () {
      ISO dates (2026-07-01); !high/!med/!low (or !1/!2/!3); #tag (repeatable). */
   function parseQuickAdd(raw) {
     let s = ' ' + (raw || '') + ' ';
-    const out = { title:'', due:null, dueTime:null, priority:0, tags:[] };
+    const out = { title:'', due:null, dueTime:null, priority:0, tags:[], recur:'none' };
     s = s.replace(/\s#([^\s#]+)/g, (m, tag) => { out.tags.push(tag); return ' '; });
     s = s.replace(/\s!(?:high|h|3)\b/ig, () => { out.priority = 3; return ' '; });
     s = s.replace(/\s!(?:med|medium|m|2)\b/ig, () => { out.priority = 2; return ' '; });
@@ -924,6 +943,14 @@ const App = (function () {
           return ' ';
         });
     }
+    // recurrence keywords
+    s = s.replace(/\b(?:every\s+weekday|weekdays)\b/i, () => { out.recur='weekdays'; return ' '; });
+    s = s.replace(/\b(?:every\s+day|daily)\b/i, () => { out.recur='daily'; return ' '; });
+    s = s.replace(/\b(?:every\s+month|monthly)\b/i, () => { out.recur='monthly'; return ' '; });
+    s = s.replace(/\b(?:every\s+week|weekly)\b/i, () => { if (out.recur==='none') out.recur='weekly'; return ' '; });
+    if (!out.due) s = s.replace(/\bnext week\b/i, () => { out.due=addDays(today,7); return ' '; });
+    if (!out.due) s = s.replace(/\bnext month\b/i, () => { const d=new Date(today+'T00:00:00'); d.setMonth(d.getMonth()+1); out.due=toISODate(d); return ' '; });
+    if (out.recur !== 'none' && !out.due) out.due = today;  // recurrence needs a base date
     // optional time: "at 3pm", "3:30pm", "15:00", "at 15"
     let tm = null;
     s = s.replace(/\bat\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\b/i, (m, h, mi, ap) => { const v = to24(h, mi, ap); if (v) { tm = v; return ' '; } return m; });
@@ -1142,6 +1169,7 @@ const App = (function () {
     else if (data.ui.view === 'agenda') surface.appendChild(renderAgenda());
     else if (data.ui.view === 'matrix') surface.appendChild(renderMatrix());
     else if (data.ui.view === 'calendar') surface.appendChild(renderCalendar());
+    else if (data.ui.view === 'focus') surface.appendChild(renderFocus());
     else surface.appendChild(renderList());
 
     const selBtn = $('#selectBtn');
@@ -1246,7 +1274,7 @@ const App = (function () {
       if (!qi.value.trim()) { qi.focus(); return; }
       const p = parseQuickAdd(qi.value);
       const t = newTask(p.title, col.id);
-      t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; p.tags.forEach(ensureTagColor);
+      t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor);
       persist(); qi.value = ''; render();
     };
     qi.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); addNow(); } };
@@ -1353,6 +1381,136 @@ const App = (function () {
     return grid;
   }
 
+  /* ---- Focus view: deterministic "what to do next" ranking ---- */
+  function focusScore(t) {
+    const today = todayStr(); let s = (t.priority || 0) * 10;
+    if (t.due) {
+      if (t.due < today) s += 40;
+      else if (t.due === today) s += 25;
+      else { const diff = (new Date(t.due) - new Date(today)) / 86400000; if (diff <= 2) s += 12; else if (diff <= 7) s += 5; }
+    }
+    if (t.createdAt) { const age = (Date.now() - new Date(t.createdAt)) / 86400000; s += Math.min(10, Math.floor(age / 3)); }
+    return s;
+  }
+  function renderFocus() {
+    const wrap = el('div', 'list'); const today = todayStr();
+    const cand = Object.values(data.tasks).filter(t => !t.archived && !t.done && !isDeferred(t) && !isBlocked(t) && matchesFilters(t));
+    cand.sort((a, b) => focusScore(b) - focusScore(a) || dueKey(a).localeCompare(dueKey(b)));
+    if (!cand.length) { wrap.appendChild(el('div', 'empty', 'Nothing to focus on right now — you’re clear, or the rest is blocked or deferred.')); return wrap; }
+    wrap.appendChild(el('div', 'list-group-title', 'Top focus · what to do next'));
+    cand.slice(0, 8).forEach(t => {
+      wrap.appendChild(renderCard(t, columnOf(t.id), 0));
+      const reason = [];
+      if (t.due && t.due < today) reason.push('overdue'); else if (t.due === today) reason.push('due today');
+      if (t.priority >= 2) reason.push((t.priority === 3 ? 'high' : 'medium') + ' priority');
+      if (reason.length) { const r = el('div', 'small'); r.style.cssText = 'margin:-4px 0 8px 26px;'; r.textContent = '↳ ' + reason.join(' · '); wrap.appendChild(r); }
+    });
+    return wrap;
+  }
+
+  /* ---- Spoken daily briefing (offline TTS) ---- */
+  function speakDay() {
+    if (!('speechSynthesis' in window)) { uiConfirm('Text-to-speech isn’t available here.', () => {}); return; }
+    const today = todayStr(); const act = Object.values(data.tasks).filter(t => !t.archived && !t.done);
+    const overdue = act.filter(t => t.due && t.due < today).sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
+    const todayT = act.filter(t => t.due === today).sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
+    const parts = [];
+    if (!overdue.length && !todayT.length) parts.push('Nothing is due today. Nice work.');
+    else {
+      parts.push('You have ' + todayT.length + ' task' + (todayT.length === 1 ? '' : 's') + ' due today' + (overdue.length ? (' and ' + overdue.length + ' overdue') : '') + '.');
+      if (overdue.length) parts.push('Overdue: ' + overdue.slice(0, 8).map(t => t.title || 'untitled').join(', ') + '.');
+      if (todayT.length) parts.push('Due today: ' + todayT.slice(0, 8).map(t => t.title || 'untitled').join(', ') + '.');
+    }
+    try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(parts.join(' '))); } catch (e) {}
+  }
+
+  /* ---- Command palette (Cmd/Ctrl+K) ---- */
+  let palSel = 0, palResults = [];
+  function paletteItems(q) {
+    const items = []; const ql = q.trim().toLowerCase();
+    if (q.trim()) { const p = parseQuickAdd(q);
+      const sub = [p.due ? ('due ' + p.due + (p.dueTime ? (' ' + p.dueTime) : '')) : '', p.priority ? ('P' + p.priority) : '', p.recur !== 'none' ? p.recur : '', p.tags.length ? ('#' + p.tags.join(' #')) : ''].filter(Boolean).join(' · ');
+      items.push({ ic: '➕', main: 'Add task: ' + (p.title || '(untitled)'), sub: sub, run: () => { const t = newTask(p.title, data.columns[0].id); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor); persist(); render(); openModal(t.id); } });
+    }
+    [['list','List'],['kanban','Board'],['agenda','Agenda'],['calendar','Calendar'],['matrix','Matrix'],['focus','Focus']].forEach(([v,label]) => {
+      if (!ql || label.toLowerCase().includes(ql) || ('go to ' + label).toLowerCase().includes(ql)) items.push({ ic: '▸', main: 'Go to ' + label, run: () => { data.ui.view = v; saveOut(); render(); } });
+    });
+    SMART.forEach(sv => { if (!ql || sv.label.toLowerCase().includes(ql) || ('filter ' + sv.label).toLowerCase().includes(ql)) items.push({ ic: '⧉', main: 'Filter: ' + sv.label, run: () => { activeSmart = sv.key; sv.apply(); syncFilterControls(); render(); } }); });
+    if (ql) Object.values(data.tasks).filter(t => !t.archived && (t.title || '').toLowerCase().includes(ql)).slice(0, 6).forEach(t => items.push({ ic: '☑', main: t.title || '(untitled)', sub: 'open task', run: () => openModal(t.id) }));
+    return items;
+  }
+  function renderPalette() {
+    const q = $('#pal_input').value; palResults = paletteItems(q); if (palSel >= palResults.length) palSel = 0;
+    const box = $('#pal_list'); box.innerHTML = '';
+    palResults.forEach((it, i) => {
+      const row = el('div', 'pal-item' + (i === palSel ? ' sel' : ''));
+      row.innerHTML = '<span class="pi-ic">' + it.ic + '</span><span class="pi-main">' + escapeHtml(it.main) + (it.sub ? ' <span class="pi-sub">' + escapeHtml(it.sub) + '</span>' : '') + '</span>';
+      row.onmousedown = (e) => { e.preventDefault(); closePalette(); it.run(); };
+      box.appendChild(row);
+    });
+  }
+  function openPalette() { palSel = 0; $('#pal_input').value = ''; $('#paletteOverlay').classList.add('open'); renderPalette(); setTimeout(() => $('#pal_input').focus(), 0); }
+  function closePalette() { $('#paletteOverlay').classList.remove('open'); }
+
+  /* ---- in-app text prompt (replaces blocked window.prompt) ---- */
+  function uiPrompt(message, def, onOk) {
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '120';
+    const box = el('div', 'modal'); box.style.maxWidth = '380px';
+    const body = el('div', 'modal-body'); body.appendChild(el('div', null, escapeHtml(message)));
+    const inp = el('input'); inp.type = 'text'; inp.value = def || ''; inp.style.width = '100%'; body.appendChild(inp);
+    const foot = el('div', 'modal-foot'); foot.style.justifyContent = 'flex-end'; foot.style.gap = '8px';
+    const cancel = el('button', 'ghost', 'Cancel'); const ok = el('button', 'primary', 'OK');
+    const done = () => { const v = inp.value.trim(); ov.remove(); onOk(v); };
+    cancel.onclick = () => ov.remove(); ok.onclick = done; inp.onkeydown = (e) => { if (e.key === 'Enter') done(); };
+    foot.appendChild(cancel); foot.appendChild(ok); box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
+    setTimeout(() => inp.focus(), 0); ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+  }
+
+  /* ---- Templates (note-local) ---- */
+  function saveTemplateFromBoard() {
+    uiPrompt('Name this template:', 'My template', (name) => {
+      if (!name) return;
+      const cols = data.columns.map(c => ({ name: c.name, color: c.color }));
+      const tasks = Object.values(data.tasks).filter(t => !t.archived).map(t => ({
+        title: t.title, notes: t.notes || '', priority: t.priority || 0, tags: (t.tags || []).slice(),
+        col: (data.columns.find(c => c.id === columnOf(t.id)) || {}).name || '', subtasks: (t.subtasks || []).map(s => s.title)
+      }));
+      (data.templates = data.templates || []).push({ id: id(), name, cols, tasks, createdAt: new Date().toISOString() });
+      persist();
+    });
+  }
+  function useTemplate(tpl) {
+    const byName = {}; data.columns.forEach(c => byName[(c.name || '').toLowerCase()] = c.id);
+    (tpl.cols || []).forEach(tc => { if (!byName[(tc.name || '').toLowerCase()]) { const c = { id: id(), name: tc.name }; if (tc.color) c.color = tc.color; data.columns.push(c); data.order[c.id] = []; byName[(c.name || '').toLowerCase()] = c.id; } });
+    (tpl.tasks || []).forEach(tt => {
+      const colId = byName[(tt.col || '').toLowerCase()] || data.columns[0].id;
+      const t = newTask(tt.title, colId); t.notes = tt.notes || ''; t.priority = tt.priority || 0; t.tags = (tt.tags || []).slice(); t.tags.forEach(ensureTagColor);
+      t.subtasks = (tt.subtasks || []).map(title => ({ id: id(), title, done: false }));
+    });
+    persist(); render();
+  }
+  function openTemplates() {
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '110';
+    const box = el('div', 'modal'); box.style.maxWidth = '420px';
+    const head = el('div', 'modal-head', '<strong style="flex:1">Templates</strong>');
+    const close = el('button', 'iconbtn', '✕'); close.onclick = () => ov.remove(); head.appendChild(close);
+    const body = el('div', 'modal-body');
+    const tpls = data.templates || [];
+    if (!tpls.length) body.appendChild(el('div', 'small', 'No templates yet. Save the current board as a reusable template below.'));
+    tpls.forEach(tpl => {
+      const row = el('div', 'sub-item');
+      row.appendChild(el('div', null, escapeHtml(tpl.name) + ' <span class="small">· ' + (tpl.tasks ? tpl.tasks.length : 0) + ' tasks</span>'));
+      const sp = el('span'); sp.style.flex = '1'; row.appendChild(sp);
+      const use = el('button', 'ghost', 'Use'); use.onclick = () => { ov.remove(); useTemplate(tpl); };
+      const del = el('button', 'danger', 'Delete'); del.onclick = () => { data.templates = data.templates.filter(x => x.id !== tpl.id); persist(); ov.remove(); openTemplates(); };
+      row.appendChild(use); row.appendChild(del); body.appendChild(row);
+    });
+    const foot = el('div', 'modal-foot'); foot.style.justifyContent = 'flex-end';
+    const save = el('button', 'primary', 'Save current board as template'); save.onclick = () => { ov.remove(); saveTemplateFromBoard(); };
+    foot.appendChild(save); box.appendChild(head); box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+  }
+
   /* ---- Calendar (month) view ---- */
   function renderCalendar() {
     const wrap = el('div'); const today = todayStr();
@@ -1433,8 +1591,10 @@ const App = (function () {
     if (archived) html += '<div class="small" style="margin-top:12px;">' + archived + ' archived task' + (archived === 1 ? '' : 's') + ' (not counted above).</div>';
     html += '<div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">' +
       '<button class="ghost" id="stats_archiveDone">Archive all completed (' + done + ')</button>' +
-      '<button class="ghost" id="stats_tagColors">Tag colors…</button></div>';
+      '<button class="ghost" id="stats_tagColors">Tag colors…</button>' +
+      '<button class="ghost" id="stats_templates">Templates…</button></div>';
     $('#statsBody').innerHTML = html;
+    $('#stats_templates').onclick = () => { $('#statsOverlay').classList.remove('open'); openTemplates(); };
     $('#stats_archiveDone').onclick = () => {
       const ids = Object.values(data.tasks).filter(t => t.done && !t.archived).map(t => t.id);
       if (!ids.length) return;
@@ -1715,12 +1875,25 @@ const App = (function () {
 
     // undo
     $('#undoBtn').onclick = undo;
+    // spoken briefing (hide if TTS unavailable)
+    if (!('speechSynthesis' in window)) { const sb = $('#speakBtn'); if (sb) sb.style.display = 'none'; }
+    else $('#speakBtn').onclick = speakDay;
+    // command palette
+    $('#pal_input').oninput = renderPalette;
+    $('#pal_input').onkeydown = (e) => {
+      if (e.key === 'Escape') { closePalette(); }
+      else if (e.key === 'ArrowDown') { e.preventDefault(); palSel = Math.min(palResults.length - 1, palSel + 1); renderPalette(); }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); palSel = Math.max(0, palSel - 1); renderPalette(); }
+      else if (e.key === 'Enter') { e.preventDefault(); const it = palResults[palSel]; if (it) { closePalette(); it.run(); } }
+    };
+    $('#paletteOverlay').addEventListener('mousedown', (e) => { if (e.target.id === 'paletteOverlay') closePalette(); });
 
     // keyboard shortcuts
     document.addEventListener('keydown', (e) => {
       const tag = (document.activeElement && document.activeElement.tagName) || '';
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       if ((e.ctrlKey || e.metaKey) && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) { e.preventDefault(); openPalette(); return; }
       if (typing) return;
       const overlayOpen = $('#overlay').classList.contains('open') || $('#statsOverlay').classList.contains('open');
       if (overlayOpen) return;
@@ -1731,6 +1904,7 @@ const App = (function () {
       else if (e.key === '3') { data.ui.view = 'agenda'; saveOut(); render(); }
       else if (e.key === '4') { data.ui.view = 'matrix'; saveOut(); render(); }
       else if (e.key === '5') { data.ui.view = 'calendar'; saveOut(); render(); }
+      else if (e.key === '6') { data.ui.view = 'focus'; saveOut(); render(); }
     });
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
