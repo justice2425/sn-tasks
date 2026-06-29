@@ -71,6 +71,13 @@
   .pal-item .pi-ic { width:18px; text-align:center; flex:0 0 auto; color:var(--muted); }
   .pal-item .pi-main { flex:1; }
   .pal-item .pi-sub { font-size:12px; color:var(--muted); }
+  .pomo { display:flex; align-items:center; gap:12px; padding:8px 12px; background:var(--panel); border:1px solid var(--border); border-radius:8px; }
+  .pomo .pomo-time { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .plan-row { display:flex; gap:10px; align-items:stretch; margin-bottom:8px; }
+  .plan-time { width:84px; flex:0 0 auto; text-align:right; font-size:13px; color:var(--muted); padding-top:4px; }
+  .plan-block { flex:1; background:var(--panel-2); border:1px solid var(--border); border-left:4px solid var(--accent); border-radius:6px; padding:8px 10px; cursor:pointer; }
+  .plan-block:hover { border-color:var(--muted-2); }
+  .plan-block.over { opacity:.6; }
   .seg button { border-radius: 0; border: none; padding: 5px 12px; }
   .seg button.active { background: var(--accent); color: var(--accent-fg); }
   .search { max-width: 240px; }
@@ -252,6 +259,7 @@
       <button data-view="calendar">Calendar</button>
       <button data-view="matrix">Matrix</button>
       <button data-view="focus">Focus</button>
+      <button data-view="plan">Plan</button>
     </div>
     <input class="search" id="search" type="search" placeholder="Search tasks…" />
     <span class="grow"></span>
@@ -345,6 +353,10 @@
           <label>List / Column</label>
           <select id="m_column"></select>
         </div>
+        <div class="field" style="max-width:110px;">
+          <label>Estimate (min)</label>
+          <input id="m_estimate" type="number" min="0" step="5" placeholder="—" />
+        </div>
       </div>
       <div class="field-row">
         <div class="field">
@@ -378,6 +390,13 @@
         <div id="m_blockers"></div>
         <div class="inline-add">
           <select id="m_blockerSelect"><option value="">Add a blocking task…</option></select>
+        </div>
+      </div>
+      <div class="field">
+        <label>Related (@)</label>
+        <div id="m_related"></div>
+        <div class="inline-add">
+          <select id="m_relatedSelect"><option value="">Link a related task…</option></select>
         </div>
       </div>
       <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
@@ -614,6 +633,8 @@ const App = (function () {
   let summaryDismissed = false;      // "due today" banner dismissed this session
   let activeSmart = null;            // currently active smart-view chip
   let calMonthOffset = 0;            // calendar view month offset (0 = current)
+  let pomoRemaining = 0, pomoTimer = null;          // pomodoro timer state
+  let reviewQueue = [], reviewIdx = 0, reviewStats = null;  // weekly review state
 
   const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0 };
 
@@ -669,6 +690,8 @@ const App = (function () {
       if (typeof t.dueTime === 'undefined') t.dueTime = null;
       if (typeof t.pinned === 'undefined') t.pinned = false;
       if (!Array.isArray(t.blockedBy)) t.blockedBy = [];
+      if (!Array.isArray(t.related)) t.related = [];
+      if (typeof t.estimate === 'undefined') t.estimate = null;
     });
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
     return d;
@@ -727,6 +750,7 @@ const App = (function () {
       id: id(), title: (title||'').trim(), notes:'', due:null, dueTime:null, priority:0,
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
+      estimate:null, related:[],
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -1083,6 +1107,26 @@ const App = (function () {
       const op = el('option'); op.value = o.id; op.textContent = (o.title || '(untitled)').slice(0, 40); sel.appendChild(op);
     });
   }
+  function unrelate(t, rid) {
+    t.related = (t.related || []).filter(x => x !== rid);
+    const r = data.tasks[rid]; if (r && Array.isArray(r.related)) r.related = r.related.filter(x => x !== t.id);
+  }
+  function renderModalRelated(t) {
+    const box = $('#m_related'); box.innerHTML = '';
+    (t.related || []).forEach(rid => {
+      const r = data.tasks[rid]; if (!r) return;
+      const chip = el('span', 'chip'); chip.style.cursor = 'pointer';
+      chip.innerHTML = (r.done ? '✓ ' : '') + escapeHtml((r.title || '(untitled)').slice(0, 40)) + ' <span class="x" style="cursor:pointer;opacity:.7;">✕</span>';
+      chip.onclick = () => { commitModal(); openModal(rid); };  // jump to the related task
+      chip.querySelector('.x').onclick = (e) => { e.stopPropagation(); unrelate(t, rid); persist(); renderModalRelated(t); render(); };
+      box.appendChild(chip);
+    });
+    const sel = $('#m_relatedSelect'); sel.innerHTML = '<option value="">Link a related task…</option>';
+    Object.values(data.tasks).forEach(o => {
+      if (o.id === t.id || o.archived || (t.related || []).includes(o.id)) return;
+      const op = el('option'); op.value = o.id; op.textContent = (o.title || '(untitled)').slice(0, 40); sel.appendChild(op);
+    });
+  }
 
   /* ---- filtering / sorting ---- */
   function matchesFilters(t) {
@@ -1170,6 +1214,7 @@ const App = (function () {
     else if (data.ui.view === 'matrix') surface.appendChild(renderMatrix());
     else if (data.ui.view === 'calendar') surface.appendChild(renderCalendar());
     else if (data.ui.view === 'focus') surface.appendChild(renderFocus());
+    else if (data.ui.view === 'plan') surface.appendChild(renderPlan());
     else surface.appendChild(renderList());
 
     const selBtn = $('#selectBtn');
@@ -1381,6 +1426,109 @@ const App = (function () {
     return grid;
   }
 
+  /* ---- duration / clock helpers ---- */
+  function fmtDur(min) { min = Math.round(min || 0); const h = Math.floor(min / 60), m = min % 60; return h ? (h + 'h' + (m ? (' ' + m + 'm') : '')) : (m + 'm'); }
+  function fmtClock(mins) { mins = ((Math.round(mins) % 1440) + 1440) % 1440; let h = Math.floor(mins / 60), m = mins % 60; const ap = h < 12 ? 'AM' : 'PM'; let hh = h % 12; if (hh === 0) hh = 12; return hh + ':' + String(m).padStart(2, '0') + ' ' + ap; }
+
+  /* ---- Plan my day (time-blocking timeline) ---- */
+  function renderPlan() {
+    const wrap = el('div', 'today'); const today = todayStr();
+    const startMin = (data.ui.planStart != null) ? data.ui.planStart : 540;   // 9:00
+    const endMin = (data.ui.planEnd != null) ? data.ui.planEnd : 1020;        // 17:00
+    // pomodoro bar
+    const pomo = el('div', 'pomo');
+    pomo.innerHTML = '<span class="pomo-time" id="pomoTime">' + (pomoTimer ? fmtPomo() : '25:00') + '</span>';
+    const pb = el('button', 'ghost', pomoTimer ? 'Stop' : '🍅 Start 25-min focus');
+    pb.onclick = () => { if (pomoTimer) pomoStop(); else pomoStart(25); render(); };
+    pomo.appendChild(pb); wrap.appendChild(pomo);
+    // controls
+    const ctl = el('div'); ctl.style.cssText = 'display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin:10px 0;';
+    const mkTime = (val, on) => { const i = el('input'); i.type = 'time'; i.value = toClock24(val); i.style.width = '120px'; i.onchange = () => { on(fromClock24(i.value)); saveOut(); render(); }; return i; };
+    ctl.appendChild(el('span', 'small', 'Day from')); ctl.appendChild(mkTime(startMin, v => data.ui.planStart = v));
+    ctl.appendChild(el('span', 'small', 'to')); ctl.appendChild(mkTime(endMin, v => data.ui.planEnd = v));
+    wrap.appendChild(ctl);
+    // today's work: active, not done, not deferred, due today or overdue or pinned
+    let items = Object.values(data.tasks).filter(t => !t.archived && !t.done && !isDeferred(t) && (t.due === today || (t.due && t.due < today) || t.pinned));
+    items.sort((a, b) => (b.priority - a.priority) || dueKey(a).localeCompare(dueKey(b)));
+    items = arrangePinned(items);
+    if (!items.length) { wrap.appendChild(el('div', 'empty', 'Nothing scheduled for today. Set tasks due today (or pin them) and give them an estimate to plan your day.')); return wrap; }
+    let cursor = startMin; let total = 0;
+    items.forEach(t => {
+      const est = t.estimate || 30; total += est;
+      const blockStart = cursor, blockEnd = cursor + est; cursor = blockEnd;
+      const row = el('div', 'plan-row');
+      const time = el('div', 'plan-time', fmtClock(blockStart) + '<br><span class="small">' + fmtDur(est) + '</span>');
+      const block = el('div', 'plan-block'); block.style.borderLeftColor = (t.priority > 0 ? PRIO[t.priority].color : 'var(--accent)');
+      if (blockStart >= endMin) block.classList.add('over');
+      block.innerHTML = '<div>' + escapeHtml(t.title || '(untitled)') + '</div><div class="small">' + fmtClock(blockStart) + ' – ' + fmtClock(blockEnd) + (blockStart >= endMin ? ' · past end of day' : '') + '</div>';
+      block.onclick = () => openModal(t.id);
+      row.appendChild(time); row.appendChild(block); wrap.appendChild(row);
+    });
+    const finish = startMin + total;
+    const summ = el('div', 'small'); summ.style.marginTop = '8px';
+    summ.textContent = items.length + ' task' + (items.length === 1 ? '' : 's') + ' · ' + fmtDur(total) + ' planned · finishes ' + fmtClock(finish) + (finish > endMin ? ('  ⚠ ' + fmtDur(finish - endMin) + ' past your day') : '');
+    wrap.appendChild(summ);
+    return wrap;
+  }
+  function toClock24(mins) { const h = Math.floor(mins / 60), m = mins % 60; return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0'); }
+  function fromClock24(s) { const p = (s || '09:00').split(':'); return (parseInt(p[0], 10) || 0) * 60 + (parseInt(p[1], 10) || 0); }
+
+  /* ---- Pomodoro ---- */
+  function fmtPomo() { const r = Math.max(0, pomoRemaining); return Math.floor(r / 60) + ':' + String(r % 60).padStart(2, '0'); }
+  function pomoStart(mins) { pomoStop(); pomoRemaining = mins * 60; pomoTimer = setInterval(() => { pomoRemaining--; const e = document.getElementById('pomoTime'); if (e) e.textContent = fmtPomo(); if (pomoRemaining <= 0) { pomoStop(); pomoDone(); render(); } }, 1000); }
+  function pomoStop() { if (pomoTimer) { clearInterval(pomoTimer); pomoTimer = null; } }
+  function pomoDone() { try { if ('speechSynthesis' in window) window.speechSynthesis.speak(new SpeechSynthesisUtterance('Pomodoro complete. Take a break.')); } catch (e) {} uiConfirm('🍅 Pomodoro complete — take a short break.', () => {}); }
+
+  /* ---- Guided Weekly Review ---- */
+  function startReview() {
+    const today = todayStr();
+    const overdue = Object.values(data.tasks).filter(t => !t.archived && !t.done && t.due && t.due < today);
+    const nodate = Object.values(data.tasks).filter(t => !t.archived && !t.done && !t.due);
+    reviewQueue = []; overdue.forEach(t => reviewQueue.push({ id: t.id, kind: 'overdue' })); nodate.forEach(t => reviewQueue.push({ id: t.id, kind: 'nodate' }));
+    reviewIdx = 0; reviewStats = { resched: 0, dropped: 0, archived: 0, done: 0 };
+    let ov = document.getElementById('reviewOverlay'); if (ov) ov.remove();
+    ov = el('div', 'overlay'); ov.id = 'reviewOverlay'; ov.style.display = 'flex'; ov.style.zIndex = '115';
+    const box = el('div', 'modal'); box.id = 'reviewBox'; box.style.maxWidth = '460px'; ov.appendChild(box); document.body.appendChild(ov);
+    reviewStep();
+  }
+  function endReview() { const ov = document.getElementById('reviewOverlay'); if (ov) ov.remove(); render(); }
+  function reviewStep() {
+    const box = document.getElementById('reviewBox'); if (!box) return; box.innerHTML = '';
+    const today = todayStr();
+    if (reviewIdx < reviewQueue.length) {
+      const item = reviewQueue[reviewIdx]; const t = data.tasks[item.id];
+      if (!t) { reviewIdx++; return reviewStep(); }
+      const head = el('div', 'modal-head', '<strong style="flex:1">Weekly review · ' + (reviewIdx + 1) + ' of ' + reviewQueue.length + '</strong>');
+      const x = el('button', 'iconbtn', '✕'); x.onclick = endReview; head.appendChild(x); box.appendChild(head);
+      const body = el('div', 'modal-body');
+      body.appendChild(el('div', 'small', item.kind === 'overdue' ? ('Overdue — was due ' + t.due) : 'Has no due date'));
+      body.appendChild(el('div', null, '<strong>' + escapeHtml(t.title || '(untitled)') + '</strong>'));
+      const acts = el('div'); acts.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;';
+      const adv = () => { persist(); reviewIdx++; reviewStep(); };
+      const mk = (label, cls, fn) => { const b = el('button', cls || 'ghost', label); b.onclick = () => { fn(); adv(); }; return b; };
+      acts.appendChild(mk('Today', null, () => { t.due = today; reviewStats.resched++; }));
+      acts.appendChild(mk('Tomorrow', null, () => { t.due = addDays(today, 1); reviewStats.resched++; }));
+      acts.appendChild(mk('+1 week', null, () => { t.due = addDays(today, 7); reviewStats.resched++; }));
+      if (item.kind === 'overdue') acts.appendChild(mk('Clear due date', null, () => { t.due = null; }));
+      acts.appendChild(mk('Mark done', null, () => { t.done = true; t.completedAt = new Date().toISOString(); reviewStats.done++; }));
+      acts.appendChild(mk('Delete', 'danger', () => { deleteTask(t.id); reviewStats.dropped++; }));
+      acts.appendChild(mk('Skip', null, () => {}));
+      body.appendChild(acts); box.appendChild(body);
+    } else {
+      const head = el('div', 'modal-head', '<strong style="flex:1">Review complete</strong>'); box.appendChild(head);
+      const body = el('div', 'modal-body');
+      body.appendChild(el('div', null, 'Rescheduled ' + reviewStats.resched + ', completed ' + reviewStats.done + ', deleted ' + reviewStats.dropped + (reviewStats.archived ? (', archived ' + reviewStats.archived) : '') + '.'));
+      const doneIds = Object.values(data.tasks).filter(t => t.done && !t.archived).map(t => t.id);
+      if (doneIds.length) {
+        const b = el('button', 'ghost', 'Archive ' + doneIds.length + ' completed task' + (doneIds.length === 1 ? '' : 's')); b.style.marginTop = '8px';
+        b.onclick = () => { doneIds.forEach(i => data.tasks[i].archived = true); reviewStats.archived += doneIds.length; persist(); reviewStep(); };
+        body.appendChild(b);
+      } else body.appendChild(el('div', 'small', 'Your board is tidy. Nice work.'));
+      box.appendChild(body);
+      const foot = el('div', 'modal-foot'); foot.style.justifyContent = 'flex-end'; const ok = el('button', 'primary', 'Done'); ok.onclick = endReview; foot.appendChild(ok); box.appendChild(foot);
+    }
+  }
+
   /* ---- Focus view: deterministic "what to do next" ranking ---- */
   function focusScore(t) {
     const today = todayStr(); let s = (t.priority || 0) * 10;
@@ -1432,7 +1580,7 @@ const App = (function () {
       const sub = [p.due ? ('due ' + p.due + (p.dueTime ? (' ' + p.dueTime) : '')) : '', p.priority ? ('P' + p.priority) : '', p.recur !== 'none' ? p.recur : '', p.tags.length ? ('#' + p.tags.join(' #')) : ''].filter(Boolean).join(' · ');
       items.push({ ic: '➕', main: 'Add task: ' + (p.title || '(untitled)'), sub: sub, run: () => { const t = newTask(p.title, data.columns[0].id); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor); persist(); render(); openModal(t.id); } });
     }
-    [['list','List'],['kanban','Board'],['agenda','Agenda'],['calendar','Calendar'],['matrix','Matrix'],['focus','Focus']].forEach(([v,label]) => {
+    [['list','List'],['kanban','Board'],['agenda','Agenda'],['calendar','Calendar'],['matrix','Matrix'],['focus','Focus'],['plan','Plan']].forEach(([v,label]) => {
       if (!ql || label.toLowerCase().includes(ql) || ('go to ' + label).toLowerCase().includes(ql)) items.push({ ic: '▸', main: 'Go to ' + label, run: () => { data.ui.view = v; saveOut(); render(); } });
     });
     SMART.forEach(sv => { if (!ql || sv.label.toLowerCase().includes(ql) || ('filter ' + sv.label).toLowerCase().includes(ql)) items.push({ ic: '⧉', main: 'Filter: ' + sv.label, run: () => { activeSmart = sv.key; sv.apply(); syncFilterControls(); render(); } }); });
@@ -1592,9 +1740,11 @@ const App = (function () {
     html += '<div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">' +
       '<button class="ghost" id="stats_archiveDone">Archive all completed (' + done + ')</button>' +
       '<button class="ghost" id="stats_tagColors">Tag colors…</button>' +
-      '<button class="ghost" id="stats_templates">Templates…</button></div>';
+      '<button class="ghost" id="stats_templates">Templates…</button>' +
+      '<button class="ghost" id="stats_review">Weekly review…</button></div>';
     $('#statsBody').innerHTML = html;
     $('#stats_templates').onclick = () => { $('#statsOverlay').classList.remove('open'); openTemplates(); };
+    $('#stats_review').onclick = () => { $('#statsOverlay').classList.remove('open'); startReview(); };
     $('#stats_archiveDone').onclick = () => {
       const ids = Object.values(data.tasks).filter(t => t.done && !t.archived).map(t => t.id);
       if (!ids.length) return;
@@ -1654,6 +1804,8 @@ const App = (function () {
     if (t.recur && t.recur !== 'none') badges.push('<span class="badge">⟳ '+ escapeHtml(recurLabel(t)) +'</span>');
     if (isDeferred(t)) badges.push('<span class="badge">⏳ '+ escapeHtml(fmtDue(t.start)) +'</span>');
     if (isBlocked(t)) badges.push('<span class="badge due-over">⛔ blocked</span>');
+    if (t.estimate) badges.push('<span class="badge">⏱ ' + fmtDur(t.estimate) + '</span>');
+    if (t.related && t.related.length) badges.push('<span class="badge">🔗 ' + t.related.length + '</span>');
     t.tags.forEach(tag => {
       const c = ensureTagColor(tag);
       badges.push('<span class="badge tag" style="border-color:'+c+'"><span style="width:7px;height:7px;border-radius:50%;background:'+c+';display:inline-block"></span>'+ escapeHtml(tag) +'</span>');
@@ -1691,6 +1843,7 @@ const App = (function () {
     $('#m_recurEvery').value = t.recurEvery || 1;
     $('#m_recurBasis').value = t.recurBasis || 'due';
     $('#m_start').value = t.start || '';
+    $('#m_estimate').value = (t.estimate == null ? '' : t.estimate);
     $('#m_pin').checked = !!t.pinned;
     $('#m_hideList').checked = !!t.hideFromList;
     $('#m_notes').value = t.notes || '';
@@ -1700,7 +1853,7 @@ const App = (function () {
     const sel = $('#m_column'); sel.innerHTML = '';
     data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
     sel.value = columnOf(taskId) || data.columns[0].id;
-    renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t);
+    renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t); renderModalRelated(t);
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
     $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '') + (t.done ? ' · done' : '');
     $('#overlay').classList.add('open');
@@ -1718,6 +1871,8 @@ const App = (function () {
     t.recurEvery = Math.max(1, parseInt($('#m_recurEvery').value, 10) || 1);
     t.recurBasis = $('#m_recurBasis').value;
     t.start = $('#m_start').value || null;
+    const estv = parseInt($('#m_estimate').value, 10);
+    t.estimate = (isNaN(estv) || estv <= 0) ? null : estv;
     t.pinned = $('#m_pin').checked;
     t.hideFromList = $('#m_hideList').checked;
     t.notes = $('#m_notes').value;
@@ -1817,6 +1972,16 @@ const App = (function () {
       if (v && t) { if (!t.blockedBy.includes(v)) t.blockedBy.push(v); persist(); renderModalBlockers(t); render(); }
       e.target.value = '';
     };
+    $('#m_relatedSelect').onchange = (e) => {
+      const v = e.target.value; const t = data.tasks[editingId]; const r = data.tasks[v];
+      if (v && t && r) {
+        t.related = t.related || []; if (!t.related.includes(v)) t.related.push(v);
+        r.related = r.related || []; if (!r.related.includes(t.id)) r.related.push(t.id);  // mutual link
+        persist(); renderModalRelated(t); render();
+      }
+      e.target.value = '';
+    };
+    $('#m_estimate').onchange = commitModal;
 
     // notes markdown preview toggle
     $('#m_notesToggle').onclick = () => {
@@ -1905,6 +2070,7 @@ const App = (function () {
       else if (e.key === '4') { data.ui.view = 'matrix'; saveOut(); render(); }
       else if (e.key === '5') { data.ui.view = 'calendar'; saveOut(); render(); }
       else if (e.key === '6') { data.ui.view = 'focus'; saveOut(); render(); }
+      else if (e.key === '7') { data.ui.view = 'plan'; saveOut(); render(); }
     });
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
