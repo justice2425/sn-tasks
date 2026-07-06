@@ -71,6 +71,33 @@
   .pal-item .pi-ic { width:18px; text-align:center; flex:0 0 auto; color:var(--muted); }
   .pal-item .pi-main { flex:1; }
   .pal-item .pi-sub { font-size:12px; color:var(--muted); }
+  .mitbanner { background:linear-gradient(0deg,var(--panel),var(--panel)); border-left:4px solid #f5a623; }
+  .mitbanner.won { border-left-color:var(--success); }
+  .insights { max-width:720px; margin:0 auto; }
+  .insights .icard { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px 14px; margin-bottom:12px; }
+  .insights .icard h4 { margin:0 0 8px; font-size:14px; }
+  .insights .icard .small { margin:4px 0; }
+  .insights .irow { display:flex; align-items:center; gap:8px; margin:5px 0; }
+  .insights .iname { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .insights .ival { flex:0 0 auto; font-size:12px; color:var(--muted); text-align:right; min-width:80px; }
+  .insights .idom { width:120px; flex:0 0 auto; font-size:13px; }
+  .insights .ibar { flex:1; height:8px; border-radius:999px; background:var(--bg); border:1px solid var(--border); overflow:hidden; }
+  .insights .ibar > span { display:block; height:100%; background:var(--accent); }
+  .insights .ibig { font-size:20px; font-weight:700; margin:2px 0 6px; }
+  .insights .ismall { font-size:12px; color:var(--muted); margin:4px 0 2px; }
+  .insights .iwon { margin-top:8px; font-weight:600; }
+  .insights .inudge { font-size:12px; color:var(--warning); margin:2px 0 6px; }
+  .insights .ispark { display:flex; align-items:flex-end; gap:2px; height:32px; margin-top:4px; }
+  .insights .ispark span { flex:1; background:var(--accent); border-radius:2px 2px 0 0; min-height:2px; }
+  .insights .iaddwin { display:flex; gap:6px; margin-top:8px; }
+  .insights .iaddwin input { flex:1; }
+  .insights .ireel { margin-top:8px; border-top:1px solid var(--border); padding-top:6px; }
+  .insights .ireel-i { font-size:13px; padding:2px 0; }
+  .insights .iweeks { display:flex; gap:6px; align-items:flex-end; margin-top:4px; }
+  .insights .iweek { flex:1; text-align:center; }
+  .insights .ivbar { height:56px; display:flex; align-items:flex-end; background:var(--bg); border:1px solid var(--border); border-radius:5px; overflow:hidden; }
+  .insights .ivbar > span { display:block; width:100%; background:var(--accent); }
+  .insights .iwlbl { font-size:11px; margin-top:3px; } .insights .iwlbl2 { font-size:10px; color:var(--muted); }
   .pomo { display:flex; align-items:center; gap:12px; padding:8px 12px; background:var(--panel); border:1px solid var(--border); border-radius:8px; }
   .pomo .pomo-time { font-size:22px; font-weight:700; font-variant-numeric:tabular-nums; }
   .plan-row { display:flex; gap:10px; align-items:stretch; margin-bottom:8px; }
@@ -260,8 +287,10 @@
       <button data-view="matrix">Matrix</button>
       <button data-view="focus">Focus</button>
       <button data-view="plan">Plan</button>
+      <button data-view="insights">Insights</button>
     </div>
     <input class="search" id="search" type="search" placeholder="Search tasks…" />
+    <button class="ghost" id="rightNowBtn" title="What can I do right now?">⚡ Right now</button>
     <span class="grow"></span>
     <span class="count" id="count"></span>
     <button class="ghost" id="speakBtn" title="Read today aloud">🔊</button>
@@ -399,6 +428,39 @@
           <select id="m_relatedSelect"><option value="">Link a related task…</option></select>
         </div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Life domain</label>
+          <select id="m_domain"><option value="">— none —</option></select>
+        </div>
+        <div class="field">
+          <label>Impact</label>
+          <select id="m_impact">
+            <option value="0">—</option>
+            <option value="1">Low</option>
+            <option value="2">Medium</option>
+            <option value="3">High</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Energy needed</label>
+          <select id="m_energy">
+            <option value="">— any —</option>
+            <option value="low">Low</option>
+            <option value="med">Medium</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="field" style="max-width:110px;">
+          <label>Actual (min)</label>
+          <input id="m_actual" type="number" min="0" step="5" placeholder="—" title="Log real time spent to calibrate your estimates" />
+        </div>
+      </div>
+      <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+        <input type="checkbox" id="m_mit" style="width:auto; margin:0;" />
+        ⭐ Make this a Most Important Task for today (max 3)
+      </label>
+      <div class="small" id="m_bump" style="display:none; color:var(--warning);"></div>
       <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
         <input type="checkbox" id="m_pin" style="width:auto; margin:0;" />
         Pin to top of its list
@@ -621,6 +683,11 @@ const App = (function () {
   const TAG_COLORS = ['#2f6fed','#30a46c','#f5a623','#e5484d','#8e4ec6','#0aa5b8','#d6409f','#a18072'];
   const PRIO = { 0:{label:'None',color:'transparent'}, 1:{label:'Low',color:'#0aa5b8'},
                  2:{label:'Medium',color:'#f5a623'}, 3:{label:'High',color:'#e5484d'} };
+  const DOMAINS = [ {k:'Book',c:'#8e4ec6',i:'📖'}, {k:'Training',c:'#e5484d',i:'🚴'}, {k:'Family',c:'#30a46c',i:'👨‍👩‍👦'}, {k:'Giving',c:'#f5a623',i:'🎁'}, {k:'Work',c:'#2f6fed',i:'💼'} ];
+  const ENERGY = [ {k:'low',l:'Low'}, {k:'med',l:'Medium'}, {k:'high',l:'High'} ];
+  const IMPACT = { 0:'—', 1:'Low', 2:'Medium', 3:'High' };
+  const MIT_MAX = 3;
+  function domainOf(k){ return DOMAINS.find(d=>d.k===k)||null; }
 
   let data = null;        // { schema, columns:[{id,name}], tasks:{id:task}, order:{colId:[taskId]}, tags:{name:color}, ui:{view} }
   let dirty = false;
@@ -636,7 +703,7 @@ const App = (function () {
   let pomoRemaining = 0, pomoTimer = null;          // pomodoro timer state
   let reviewQueue = [], reviewIdx = 0, reviewStats = null;  // weekly review state
 
-  const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0 };
+  const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0, domain:null, rightNow:null };
 
   /* ---- persistence ---- */
   function defaultData() {
@@ -692,7 +759,14 @@ const App = (function () {
       if (!Array.isArray(t.blockedBy)) t.blockedBy = [];
       if (!Array.isArray(t.related)) t.related = [];
       if (typeof t.estimate === 'undefined') t.estimate = null;
+      if (typeof t.domain === 'undefined') t.domain = null;
+      if (typeof t.impact === 'undefined') t.impact = 0;
+      if (typeof t.energy === 'undefined') t.energy = null;
+      if (typeof t.mit === 'undefined') t.mit = null;
+      if (typeof t.bumpCount === 'undefined') t.bumpCount = 0;
+      if (typeof t.actualMin === 'undefined') t.actualMin = null;
     });
+    d.wins = d.wins || {};
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
     return d;
   }
@@ -751,6 +825,7 @@ const App = (function () {
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
       estimate:null, related:[],
+      domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -1047,10 +1122,42 @@ const App = (function () {
       chip.onclick = () => { activeSmart = sv.key; sv.apply(); syncFilterControls(); render(); };
       wrap.appendChild(chip);
     });
+    // active transient-filter chips (dismissible)
+    if (filters.rightNow) {
+      const m = filters.rightNow.mins, e = filters.rightNow.energy;
+      const label = '⚡ ' + (m ? '≤' + fmtDur(m) : 'any time') + (e ? ' · ' + e + ' energy' : '');
+      const chip = el('span', 'chip active', label + ' <span class="x">✕</span>'); chip.style.background = 'var(--accent)'; chip.style.color = '#fff';
+      chip.onclick = () => { filters.rightNow = null; render(); };
+      wrap.appendChild(chip);
+    }
+    if (filters.domain) {
+      const dm = domainOf(filters.domain);
+      const chip = el('span', 'chip active', (dm ? dm.i + ' ' + dm.k : filters.domain) + ' <span class="x">✕</span>');
+      if (dm) { chip.style.background = dm.c; chip.style.color = '#fff'; }
+      chip.onclick = () => { filters.domain = null; render(); };
+      wrap.appendChild(chip);
+    }
   }
 
+  /* ---- MIT banner (shown above the due banner, on every view except Insights) ---- */
+  function renderMITBanner() {
+    const old = $('#mitBanner'); if (old) old.remove();
+    if (data.ui.view === 'insights') return;
+    const mits = todayMITs(); if (!mits.length) return;
+    const doneN = mits.filter(m => m.done).length; const won = mitDayWon();
+    const banner = el('div', 'banner mitbanner'); banner.id = 'mitBanner';
+    if (won) banner.classList.add('won');
+    const label = won ? '🏆 Day won — all Most Important Tasks done!' :
+      '⭐ Today’s Most Important: ' + mits.map(m => (m.done ? '✓ ' : '') + escapeHtml(m.title || '(untitled)')).join('  ·  ') + '   (' + doneN + '/' + mits.length + ')';
+    banner.appendChild(el('span', 'grow', label));
+    const go = el('button', 'ghost', 'Insights');
+    go.onclick = () => { data.ui.view = 'insights'; saveOut(); render(); };
+    banner.appendChild(go);
+    const surface = $('#surface'); surface.parentNode.insertBefore(banner, surface);
+  }
   /* ---- due-today banner ---- */
   function renderBanner() {
+    renderMITBanner();
     const old = $('#dueBanner'); if (old) old.remove();
     if (summaryDismissed) return;
     const today = todayStr();
@@ -1144,6 +1251,13 @@ const App = (function () {
       if (!hay.includes(q)) return false;
     }
     if (filters.tags.size) { if (!t.tags.some(tag => filters.tags.has(tag))) return false; }
+    if (filters.domain) { if (t.domain !== filters.domain) return false; }
+    if (filters.rightNow) {
+      if (t.done) return false;
+      const mins = filters.rightNow.mins;
+      if (mins && (!t.estimate || t.estimate > mins)) return false;   // must fit the time you have
+      if (filters.rightNow.energy && t.energy && t.energy !== filters.rightNow.energy) return false; // energy match (untagged tasks always allowed)
+    }
     if (filters.priorityMin && t.priority < filters.priorityMin) return false;
     if (filters.due !== 'all') {
       const st = dueState(t.due);
@@ -1215,6 +1329,7 @@ const App = (function () {
     else if (data.ui.view === 'calendar') surface.appendChild(renderCalendar());
     else if (data.ui.view === 'focus') surface.appendChild(renderFocus());
     else if (data.ui.view === 'plan') surface.appendChild(renderPlan());
+    else if (data.ui.view === 'insights') surface.appendChild(renderInsights());
     else surface.appendChild(renderList());
 
     const selBtn = $('#selectBtn');
@@ -1771,8 +1886,14 @@ const App = (function () {
     const row = el('div', 'card-row');
     const cb = el('div', 'checkbox' + (t.done ? ' done' : ''));
     cb.onclick = (e) => { e.stopPropagation(); onComplete(t, () => { toggleDone(t); persist(); render(); }); };
+    if (t.domain) { const dm = domainOf(t.domain); if (dm) { const dot = el('span'); dot.title = 'Domain: ' + dm.k; dot.style.cssText = 'flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:' + dm.c + ';'; row.appendChild(dot); } }
     const title = el('div', 'card-title'); title.textContent = t.title || '(untitled)';
     row.appendChild(cb); row.appendChild(title);
+    const star = el('button', 'iconbtn'); star.textContent = (t.mit === todayStr()) ? '⭐' : '☆';
+    star.title = (t.mit === todayStr()) ? 'Remove from today’s Most Important' : 'Make a Most Important Task for today';
+    star.style.cssText = 'flex:0 0 auto; padding:0 4px; opacity:' + (t.mit === todayStr() ? '1' : '.4') + ';';
+    star.onclick = (e) => { e.stopPropagation(); if (setMIT(t, t.mit !== todayStr())) { persist(); render(); } };
+    row.appendChild(star);
     const pin = el('button', 'iconbtn'); pin.textContent = '📌';
     pin.title = t.pinned ? 'Unpin' : 'Pin to top';
     pin.style.cssText = 'flex:0 0 auto; padding:0 4px; opacity:' + (t.pinned ? '1' : '.3') + ';';
@@ -1829,6 +1950,132 @@ const App = (function () {
     return '<svg viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'+(map[name]||'')+'</svg>';
   }
 
+  /* =======================  INSIGHTS / MIT / WINS  ======================= */
+  // --- MIT (Most Important Task) ---
+  function todayMITs() { const t = todayStr(); return Object.values(data.tasks).filter(x => !x.archived && x.mit === t); }
+  function mitDayWon() { const m = todayMITs(); return m.length > 0 && m.every(x => x.done); }
+  function setMIT(t, on) {
+    const today = todayStr();
+    if (on) {
+      if (t.mit !== today && todayMITs().length >= MIT_MAX) { uiConfirm('You already have ' + MIT_MAX + ' Most Important Tasks for today. The whole point is to pick only a few — finish or unstar one first.', () => {}); return false; }
+      t.mit = today;
+    } else t.mit = null;
+    return true;
+  }
+  // --- wins & momentum ---
+  function winsFor(dstr) { return (data.wins && data.wins[dstr]) || []; }
+  function addWin(text) { text = (text || '').trim(); if (!text) return; const d = todayStr(); data.wins = data.wins || {}; (data.wins[d] = data.wins[d] || []).push(text); }
+  function doneOn(dstr) { return Object.values(data.tasks).filter(t => t.done && t.completedAt && t.completedAt.slice(0, 10) === dstr).length; }
+  function completedTitlesSince(dstr) { return Object.values(data.tasks).filter(t => t.done && t.completedAt && t.completedAt.slice(0, 10) >= dstr).sort((a, b) => b.completedAt.localeCompare(a.completedAt)); }
+  function shipStreak() { const today = todayStr(); let s = 0, d = today; while (true) { const has = doneOn(d) > 0 || winsFor(d).length > 0; if (has) s++; else if (d !== today) break; d = addDays(d, -1); if (d < '2000-01-01') break; } return s; }
+  // --- life balance ---
+  function domainStats(days) { const today = todayStr(); const cut = addDays(today, -(days - 1)); const res = {}; DOMAINS.forEach(dm => res[dm.k] = { open:0, openMin:0, doneWk:0, lastActive:null, used:false });
+    Object.values(data.tasks).forEach(t => { if (t.archived || !t.domain || !res[t.domain]) return; const r = res[t.domain]; r.used = true;
+      if (!t.done) { r.open++; r.openMin += (t.estimate || 0); }
+      if (t.done && t.completedAt && t.completedAt.slice(0, 10) >= cut) r.doneWk++;
+      [t.completedAt && t.completedAt.slice(0, 10), t.createdAt && t.createdAt.slice(0, 10)].filter(Boolean).forEach(x => { if (!r.lastActive || x > r.lastActive) r.lastActive = x; });
+    }); return res; }
+  function daysSince(dstr) { if (!dstr) return null; return Math.round((new Date(todayStr() + 'T00:00:00') - new Date(dstr + 'T00:00:00')) / 86400000); }
+  // --- estimate accuracy & throughput ---
+  function calibration() { const arr = Object.values(data.tasks).filter(t => t.estimate && t.actualMin); if (arr.length < 3) return { n: arr.length, ratio: null }; let est = 0, act = 0; arr.forEach(t => { est += t.estimate; act += t.actualMin; }); return { n: arr.length, ratio: act / est, est, act }; }
+  function throughputWeeks(nWeeks) { const today = todayStr(); const arr = []; for (let w = 0; w < nWeeks; w++) { const end = addDays(today, -7 * w); const start = addDays(end, -6); let n = 0, min = 0; Object.values(data.tasks).forEach(t => { if (t.done && t.completedAt) { const cd = t.completedAt.slice(0, 10); if (cd >= start && cd <= end) { n++; min += (t.estimate || 0); } } }); arr.push({ n, min }); } return arr.reverse(); }
+  function quickWins() { return Object.values(data.tasks).filter(t => !t.done && !t.archived && t.impact >= 2 && t.estimate && t.estimate <= 20).sort((a, b) => b.impact - a.impact || a.estimate - b.estimate); }
+  // --- procrastination radar ---
+  function stickyTasks(min) { return Object.values(data.tasks).filter(t => !t.done && !t.archived && (t.bumpCount || 0) >= min).sort((a, b) => (b.bumpCount || 0) - (a.bumpCount || 0)); }
+
+  // --- right-now surfacing ---
+  function openRightNow() {
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '100';
+    const box = el('div', 'modal'); box.style.maxWidth = '360px';
+    const head = el('div', 'modal-head', '<strong class="grow">⚡ What can I do right now?</strong>');
+    const close = el('button', 'iconbtn', '✕'); close.onclick = () => ov.remove(); head.appendChild(close);
+    const body = el('div', 'modal-body');
+    body.appendChild(el('div', 'small', 'Surface active tasks that fit the time and energy you actually have. (Tasks need an Estimate to match on time; untagged energy always shows.)'));
+    const f1 = el('div', 'field'); f1.appendChild(el('label', null, 'I have about…'));
+    const mins = el('select'); [['15', '15 minutes'], ['30', '30 minutes'], ['60', '1 hour'], ['120', '2 hours'], ['', 'any amount of time']].forEach(o => { const op = el('option'); op.value = o[0]; op.textContent = o[1]; mins.appendChild(op); }); mins.value = '30'; f1.appendChild(mins); body.appendChild(f1);
+    const f2 = el('div', 'field'); f2.appendChild(el('label', null, 'Energy level'));
+    const en = el('select'); [['', 'any'], ['low', 'Low'], ['med', 'Medium'], ['high', 'High']].forEach(o => { const op = el('option'); op.value = o[0]; op.textContent = o[1]; en.appendChild(op); }); f2.appendChild(en); body.appendChild(f2);
+    const foot = el('div', 'modal-foot'); const go = el('button', 'primary', 'Show me');
+    go.onclick = () => { filters.rightNow = { mins: parseInt(mins.value, 10) || 0, energy: en.value || null }; filters.status = 'active'; syncFilterControls(); activeSmart = null; data.ui.view = 'list'; saveOut(); ov.remove(); render(); };
+    foot.appendChild(el('span', 'grow', '')); foot.appendChild(go);
+    box.appendChild(head); box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+  }
+
+  function iCard(title) { const c = el('div', 'icard'); c.appendChild(el('h4', null, title)); return c; }
+  function ibar(pct, color) { const b = el('div', 'ibar'); const f = el('span'); f.style.width = (pct == null ? 0 : Math.max(0, Math.min(100, pct))) + '%'; if (color) f.style.background = color; b.appendChild(f); return b; }
+  function renderInsights() {
+    const wrap = el('div', 'insights');
+    const today = todayStr();
+
+    // 1) Today's MITs
+    const c1 = iCard('⭐ Most Important Tasks — today');
+    const mits = todayMITs();
+    if (!mits.length) c1.appendChild(el('div', 'small', 'None chosen yet. Open any task and hit “⭐ Make this a Most Important Task,” or use the ⭐ on a card. Pick 1–' + MIT_MAX + ' that would make today a win.'));
+    else {
+      mits.forEach(t => { const row = el('div', 'irow'); const cb = el('div', 'checkbox' + (t.done ? ' done' : '')); cb.title = 'Toggle complete';
+        cb.onclick = () => { if (!t.done) onComplete(t, () => {}); else { toggleDone(t); persist(); render(); } };
+        const name = el('div', 'iname'); name.textContent = t.title || '(untitled)'; if (t.done) name.style.textDecoration = 'line-through';
+        name.style.cursor = 'pointer'; name.onclick = () => openModal(t.id);
+        row.appendChild(cb); row.appendChild(name); c1.appendChild(row); });
+      c1.appendChild(el('div', 'iwon', mitDayWon() ? '🏆 Day won — every Most Important Task is done.' : (mits.filter(m => m.done).length + ' of ' + mits.length + ' done. The day isn’t won until these are.')));
+    }
+    wrap.appendChild(c1);
+
+    // 2) Momentum & wins
+    const c2 = iCard('🔥 Momentum & wins');
+    c2.appendChild(el('div', 'ibig', doneOn(today) + ' <span class="ismall">done today</span> · <span style="color:var(--accent)">' + shipStreak() + '-day</span> <span class="ismall">ship streak</span>'));
+    const spark = el('div', 'ispark'); const vals = []; for (let i = 13; i >= 0; i--) vals.push(doneOn(addDays(today, -i)) + winsFor(addDays(today, -i)).length); const mx = Math.max(1, ...vals);
+    vals.forEach(v => { const s = el('span'); s.style.height = Math.max(2, Math.round(v / mx * 30)) + 'px'; spark.appendChild(s); }); c2.appendChild(spark); c2.appendChild(el('div', 'ismall', 'Last 14 days (completions + logged wins)'));
+    const winRow = el('div', 'iaddwin'); const wi = el('input'); wi.type = 'text'; wi.placeholder = 'What did you ship today? (a win, big or small)'; wi.id = 'winInput';
+    const wb = el('button', 'ghost', 'Log win'); const logIt = () => { if (wi.value.trim()) { addWin(wi.value); wi.value = ''; persist(); render(); } };
+    wb.onclick = logIt; wi.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); logIt(); } };
+    winRow.appendChild(wi); winRow.appendChild(wb); c2.appendChild(winRow);
+    const wk = completedTitlesSince(addDays(today, -6)); const winTexts = []; for (let i = 0; i <= 6; i++) { const d = addDays(today, -i); winsFor(d).forEach(x => winTexts.push(x)); }
+    if (wk.length || winTexts.length) { const reel = el('div', 'ireel'); reel.appendChild(el('div', 'ismall', 'This week’s highlight reel'));
+      winTexts.slice(0, 8).forEach(x => reel.appendChild(el('div', 'ireel-i', '🎉 ' + escapeHtml(x))));
+      wk.slice(0, 10).forEach(t => reel.appendChild(el('div', 'ireel-i', '✓ ' + escapeHtml(t.title || '(untitled)'))));
+      c2.appendChild(reel); }
+    wrap.appendChild(c2);
+
+    // 3) Life balance
+    const c3 = iCard('⚖️ Life balance (this week)');
+    const ds = domainStats(7); let anyDomain = false;
+    DOMAINS.forEach(dm => { const r = ds[dm.k]; if (!r.used) return; anyDomain = true;
+      const row = el('div', 'irow'); row.appendChild(el('div', 'idom', dm.i + ' ' + dm.k));
+      const maxOpen = Math.max(1, ...DOMAINS.map(x => ds[x.k].open));
+      row.appendChild(ibar(r.open / maxOpen * 100, dm.c));
+      row.appendChild(el('div', 'ival', r.open + ' open · ' + r.doneWk + ' done')); c3.appendChild(row);
+      const sd = daysSince(r.lastActive);
+      if (sd != null && sd >= 7) c3.appendChild(el('div', 'inudge', '⚠️ ' + dm.k + ': nothing touched in ' + sd + ' days.'));
+    });
+    if (!anyDomain) c3.appendChild(el('div', 'small', 'Tag tasks with a life domain (Book, Training, Family, Giving, Work) in the task editor to see where your attention is going — and get nudged when a domain goes quiet.'));
+    wrap.appendChild(c3);
+
+    // 4) Estimate accuracy & throughput
+    const c4 = iCard('📊 Planning & throughput');
+    const cal = calibration();
+    if (cal.ratio == null) c4.appendChild(el('div', 'small', 'Log “Actual (min)” on a few finished tasks (next to Estimate) and I’ll show how your estimates compare to reality. ' + (cal.n ? '(' + cal.n + ' so far; need 3+.)' : '')));
+    else { const pct = Math.round(cal.ratio * 100); const verb = cal.ratio > 1.1 ? 'under-estimate' : (cal.ratio < 0.9 ? 'over-estimate' : 'estimate well'); c4.appendChild(el('div', 'small', 'Across ' + cal.n + ' tasks, actual time was <strong>' + pct + '%</strong> of estimated — you ' + verb + (cal.ratio > 1.1 ? ' (things take ~' + Math.round((cal.ratio - 1) * 100) + '% longer than you think).' : (cal.ratio < 0.9 ? '.' : '.')))); }
+    const tw = throughputWeeks(6); const twMax = Math.max(1, ...tw.map(x => x.n));
+    const twRow = el('div', 'iweeks'); tw.forEach((x, i) => { const col = el('div', 'iweek'); const bar = el('div', 'ivbar'); const f = el('span'); f.style.height = Math.max(3, x.n / twMax * 100) + '%'; bar.appendChild(f); col.appendChild(bar); col.appendChild(el('div', 'iwlbl', String(x.n))); col.appendChild(el('div', 'iwlbl2', i === tw.length - 1 ? 'now' : ('-' + (tw.length - 1 - i) + 'w'))); twRow.appendChild(col); });
+    c4.appendChild(el('div', 'ismall', 'Tasks completed per week')); c4.appendChild(twRow);
+    const qw = quickWins();
+    if (qw.length) { c4.appendChild(el('div', 'ismall', '⚡ Quick wins (high impact, ≤20 min)')); qw.slice(0, 6).forEach(t => { const r = el('div', 'irow'); const n = el('div', 'iname'); n.textContent = t.title || '(untitled)'; n.style.cursor = 'pointer'; n.onclick = () => openModal(t.id); r.appendChild(n); r.appendChild(el('div', 'ival', IMPACT[t.impact] + ' · ' + fmtDur(t.estimate))); c4.appendChild(r); }); }
+    else c4.appendChild(el('div', 'ismall', 'Set Impact + a short Estimate on tasks to surface “quick wins” here.'));
+    wrap.appendChild(c4);
+
+    // 5) Procrastination radar
+    const c5 = iCard('🐸 Procrastination radar');
+    const sticky = stickyTasks(3);
+    if (!sticky.length) c5.appendChild(el('div', 'small', 'Nothing stuck — tasks whose due date you push 3+ times will show up here so you can shrink, break up, delegate, or drop them.'));
+    else { c5.appendChild(el('div', 'small', 'These keep getting pushed. For each: shrink it, break it up, delegate it — or consciously let it go.'));
+      sticky.slice(0, 8).forEach(t => { const r = el('div', 'irow'); const n = el('div', 'iname'); n.textContent = t.title || '(untitled)'; n.style.cursor = 'pointer'; n.onclick = () => openModal(t.id); r.appendChild(n); r.appendChild(el('div', 'ival', 'moved ' + t.bumpCount + '×')); c5.appendChild(r); }); }
+    wrap.appendChild(c5);
+
+    return wrap;
+  }
+
   /* =======================  MODAL  ======================= */
   function openModal(taskId) {
     editingId = taskId;
@@ -1844,6 +2091,12 @@ const App = (function () {
     $('#m_recurBasis').value = t.recurBasis || 'due';
     $('#m_start').value = t.start || '';
     $('#m_estimate').value = (t.estimate == null ? '' : t.estimate);
+    const dsel = $('#m_domain'); dsel.innerHTML = '<option value="">— none —</option>' + DOMAINS.map(d => '<option value="' + d.k + '">' + d.i + ' ' + d.k + '</option>').join(''); dsel.value = t.domain || '';
+    $('#m_impact').value = String(t.impact || 0);
+    $('#m_energy').value = t.energy || '';
+    $('#m_actual').value = (t.actualMin == null ? '' : t.actualMin);
+    $('#m_mit').checked = (t.mit === todayStr());
+    const bump = $('#m_bump'); if (t.bumpCount > 0) { bump.style.display = ''; bump.textContent = '🐸 Rescheduled ' + t.bumpCount + ' time' + (t.bumpCount === 1 ? '' : 's') + ' — consider shrinking, breaking up, delegating, or dropping it.'; } else bump.style.display = 'none';
     $('#m_pin').checked = !!t.pinned;
     $('#m_hideList').checked = !!t.hideFromList;
     $('#m_notes').value = t.notes || '';
@@ -1864,7 +2117,10 @@ const App = (function () {
     if (!editingId) return;
     const t = data.tasks[editingId]; if (!t) return;
     t.title = $('#m_title').value.trim();
+    const oldDue = t.due;
     t.due = $('#m_due').value || null;
+    // procrastination radar: count when an unfinished task's due date is pushed to a later day
+    if (!t.done && oldDue && t.due && t.due > oldDue) t.bumpCount = (t.bumpCount || 0) + 1;
     t.dueTime = (t.due && $('#m_dueTime').value) ? $('#m_dueTime').value : null;
     t.priority = parseInt($('#m_priority').value, 10) || 0;
     t.recur = $('#m_recur').value;
@@ -1873,6 +2129,12 @@ const App = (function () {
     t.start = $('#m_start').value || null;
     const estv = parseInt($('#m_estimate').value, 10);
     t.estimate = (isNaN(estv) || estv <= 0) ? null : estv;
+    t.domain = $('#m_domain').value || null;
+    t.impact = parseInt($('#m_impact').value, 10) || 0;
+    t.energy = $('#m_energy').value || null;
+    const actv = parseInt($('#m_actual').value, 10);
+    t.actualMin = (isNaN(actv) || actv < 0) ? null : actv;
+    setMIT(t, $('#m_mit').checked);
     t.pinned = $('#m_pin').checked;
     t.hideFromList = $('#m_hideList').checked;
     t.notes = $('#m_notes').value;
@@ -2033,6 +2295,8 @@ const App = (function () {
     };
     $('#bulkClear').onclick = () => { selectMode = false; selectedIds.clear(); render(); };
 
+    // right-now surfacing
+    $('#rightNowBtn').onclick = openRightNow;
     // stats
     $('#statsBtn').onclick = openStats;
     $('#stats_close').onclick = () => $('#statsOverlay').classList.remove('open');
@@ -2071,6 +2335,7 @@ const App = (function () {
       else if (e.key === '5') { data.ui.view = 'calendar'; saveOut(); render(); }
       else if (e.key === '6') { data.ui.view = 'focus'; saveOut(); render(); }
       else if (e.key === '7') { data.ui.view = 'plan'; saveOut(); render(); }
+      else if (e.key === '8') { data.ui.view = 'insights'; saveOut(); render(); }
     });
     $('#addTaskBtn').onclick = () => {
       const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
@@ -2178,7 +2443,8 @@ const App = (function () {
         onNote: (text) => { standalone = false; load(text); },
         onStandalone: () => { standalone = true; load(''); }
       });
-    }
+    },
+    _test: { todayMITs, mitDayWon, setMIT, doneOn, shipStreak, domainStats, daysSince, calibration, throughputWeeks, quickWins, stickyTasks, matchesFilters, addWin, winsFor, todayStr, addDays, filters, _set: (d) => { data = d; } }
   };
 })();
 
