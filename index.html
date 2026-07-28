@@ -164,6 +164,13 @@
   .card:hover { border-color: var(--muted-2); }
   .card.dragging { opacity: .5; }
   .card.completed .card-title { text-decoration: line-through; color: var(--muted); }
+  /* nested subtasks: indent guide + collapse caret + parent breadcrumb */
+  .card.child { border-left: 3px solid var(--muted-2); }
+  .caret-btn { flex: 0 0 auto; width: 18px; height: 18px; padding: 0; margin-top: 1px; border: none; background: transparent;
+    color: var(--muted); font-size: 11px; line-height: 1; cursor: pointer; border-radius: 4px; }
+  .caret-btn:hover { background: var(--panel); color: var(--fg); }
+  .breadcrumb { font-size: 11px; color: var(--muted); cursor: pointer; margin-bottom: 4px; padding-left: 2px; }
+  .breadcrumb:hover { color: var(--accent); text-decoration: underline; }
   .card-row { display: flex; align-items: flex-start; gap: 8px; }
   .checkbox {
     flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--muted-2);
@@ -437,6 +444,7 @@
         <label>Tags</label>
         <div class="tag-editor" id="m_tags"></div>
       </div>
+      <div id="m_parentInfo" class="small" style="display:none; margin-bottom:8px;"></div>
       <div class="field subtasks">
         <label>Subtasks</label>
         <div id="m_subtasks"></div>
@@ -819,6 +827,29 @@ const App = (function () {
       if (typeof t.mit === 'undefined') t.mit = null;
       if (typeof t.bumpCount === 'undefined') t.bumpCount = 0;
       if (typeof t.actualMin === 'undefined') t.actualMin = null;
+      if (typeof t.parentId === 'undefined') t.parentId = null;
+      if (typeof t.collapsed === 'undefined') t.collapsed = false;
+    });
+    // One-time: promote legacy checklist subtasks into real nested child tasks.
+    const colOf = (tid) => { for (const c of d.columns) if ((d.order[c.id] || []).includes(tid)) return c.id; return d.columns[0].id; };
+    Object.values(d.tasks).forEach(parent => {
+      if (!Array.isArray(parent.subtasks) || !parent.subtasks.length) return;
+      const col = colOf(parent.id);
+      parent.subtasks.forEach(s => {
+        const cid = (s && s.id) ? s.id : id();
+        if (d.tasks[cid]) return;
+        d.tasks[cid] = {
+          id: cid, title: (s.title || '').trim(), notes:'', due: s.due || null, dueTime:null, priority:0,
+          tags:[], links:[], subtasks:[], done: !!s.done, archived:false, hideFromList:false,
+          recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
+          estimate:null, related:[], domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
+          parentId: parent.id, collapsed:false,
+          createdAt: parent.createdAt || new Date().toISOString(),
+          completedAt: s.done ? (parent.createdAt || new Date().toISOString()) : null
+        };
+        (d.order[col] = d.order[col] || []).push(cid);
+      });
+      parent.subtasks = [];
     });
     d.wins = d.wins || {};
     if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
@@ -839,6 +870,14 @@ const App = (function () {
     // orphan tasks -> first column
     Object.keys(data.tasks).forEach(tid => {
       if (!seen.has(tid)) { data.order[data.columns[0].id].push(tid); seen.add(tid); }
+    });
+    // validate parent links: parent must exist, not self, and not form a cycle
+    Object.values(data.tasks).forEach(t => {
+      if (t.parentId && (!data.tasks[t.parentId] || t.parentId === t.id)) t.parentId = null;
+    });
+    Object.values(data.tasks).forEach(t => {
+      const chain = new Set([t.id]); let p = t.parentId;
+      while (p) { if (chain.has(p)) { t.parentId = null; break; } chain.add(p); p = data.tasks[p] ? data.tasks[p].parentId : null; }
     });
   }
 
@@ -880,7 +919,7 @@ const App = (function () {
       id: id(), title: (title||'').trim(), notes:'', due:null, dueTime:null, priority:0,
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
-      estimate:null, related:[],
+      estimate:null, related:[], parentId:null, collapsed:false,
       domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
       createdAt: new Date().toISOString(), completedAt:null
     };
@@ -893,6 +932,16 @@ const App = (function () {
     for (const c of data.columns) if ((data.order[c.id]||[]).includes(taskId)) return c.id;
     return null;
   }
+  /* ---- task hierarchy (nested subtasks via parentId) ---- */
+  function orderIndexMap() { const m = {}; let i = 0; data.columns.forEach(c => (data.order[c.id] || []).forEach(tid => { m[tid] = i++; })); return m; }
+  function childrenOf(pid) { const idx = orderIndexMap(); return Object.values(data.tasks).filter(t => t.parentId === pid).sort((a, b) => (idx[a.id] ?? 1e9) - (idx[b.id] ?? 1e9)); }
+  function hasChildren(pid) { return Object.values(data.tasks).some(t => t.parentId === pid); }
+  function descendantStats(pid) {
+    let done = 0, total = 0;
+    (function rec(p) { Object.values(data.tasks).forEach(t => { if (t.parentId === p && !t.archived) { total++; if (t.done) done++; rec(t.id); } }); })(pid);
+    return { done, total };
+  }
+  function deleteSubtree(taskId) { childrenOf(taskId).slice().forEach(c => deleteSubtree(c.id)); deleteTask(taskId); }
   function moveTask(taskId, toCol, toIndex) {
     const from = columnOf(taskId);
     if (from) data.order[from] = data.order[from].filter(t => t !== taskId);
@@ -901,6 +950,8 @@ const App = (function () {
     arr.splice(toIndex, 0, taskId);
   }
   function deleteTask(taskId) {
+    // any children are detached to top-level so they aren't silently lost
+    Object.values(data.tasks).forEach(t => { if (t.parentId === taskId) t.parentId = null; });
     const c = columnOf(taskId);
     if (c) data.order[c] = data.order[c].filter(t => t !== taskId);
     delete data.tasks[taskId];
@@ -928,12 +979,22 @@ const App = (function () {
     next.createdAt = new Date().toISOString();
     const basisDate = (t.recurBasis === 'completed') ? todayStr() : t.due;
     next.due = computeNextDue(basisDate, t.recur, t.recurEvery);
-    next.subtasks = (next.subtasks || []).map(s => ({ id: s.id, title: s.title, done: false }));
-    next.start = null; next.blockedBy = [];
+    next.subtasks = []; next.start = null; next.blockedBy = [];
     delete next._fromColumn;
     data.tasks[next.id] = next;
     const placeCol = placeColId || data.columns[0].id;
     (data.order[placeCol] = data.order[placeCol] || []).unshift(next.id);
+    // carry nested subtasks into the new occurrence, reset to not-done
+    (function cloneKids(oldPid, newPid) {
+      childrenOf(oldPid).forEach(ch => {
+        const c = JSON.parse(JSON.stringify(ch));
+        c.id = id(); c.done = false; c.completedAt = null; c.archived = false; c.createdAt = new Date().toISOString();
+        c.parentId = newPid; c.blockedBy = []; c.related = []; c.mit = null; c.subtasks = [];
+        data.tasks[c.id] = c;
+        (data.order[placeCol] = data.order[placeCol] || []).push(c.id);
+        cloneKids(ch.id, c.id);
+      });
+    })(t.id, next.id);
     return next.id;
   }
   // Remove task ids from every in-session undo snapshot so they can't be restored.
@@ -1298,8 +1359,7 @@ const App = (function () {
     }
     if (filters.search) {
       const q = filters.search.toLowerCase();
-      const hay = (t.title + ' ' + t.notes + ' ' + t.tags.join(' ') + ' ' +
-                   t.subtasks.map(s=>s.title).join(' ')).toLowerCase();
+      const hay = (t.title + ' ' + t.notes + ' ' + t.tags.join(' ')).toLowerCase();
       if (!hay.includes(q)) return false;
     }
     if (filters.tags.size) { if (!t.tags.some(tag => filters.tags.has(tag))) return false; }
@@ -1616,17 +1676,29 @@ const App = (function () {
       return wrap;
     }
 
+    // Nested rendering: a task is a "root" here if its parent isn't part of the
+    // visible set (top-level, or a child whose parent was filtered out). Children
+    // are drawn indented directly beneath their parent, regardless of column.
+    const visible = new Set(all.map(t => t.id));
+    const seen = new Set();
+    const isRoot = t => !t.parentId || !visible.has(t.parentId);
+    const renderNode = (t, level) => {
+      if (seen.has(t.id)) return; seen.add(t.id);
+      wrap.appendChild(renderCard(t, columnOf(t.id), 0, level));
+      if (t.collapsed) return;
+      childrenOf(t.id).forEach(ch => { if (visible.has(ch.id)) renderNode(ch, level + 1); });
+    };
     if (filters.sort === 'manual') {
-      // group by column in board order
+      // group by column in board order; count only the roots that live in each column
       data.columns.forEach(col => {
-        const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && listMatch(data.tasks[tid]));
+        const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && visible.has(tid) && isRoot(data.tasks[tid]));
         if (!ids.length) return;
         const dot = col.color ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col.color + ';margin-right:6px;vertical-align:middle;"></span>' : '';
         wrap.appendChild(el('div','list-group-title', dot + escapeHtml(col.name) + ' · ' + ids.length));
-        arrangePinned(ids.map(tid => data.tasks[tid])).forEach((t, i) => wrap.appendChild(renderCard(t, col.id, i)));
+        arrangePinned(ids.map(tid => data.tasks[tid])).forEach(t => renderNode(t, 0));
       });
     } else {
-      arrangePinned(sortTasks(all)).forEach(t => wrap.appendChild(renderCard(t, columnOf(t.id), 0)));
+      arrangePinned(sortTasks(all.filter(isRoot))).forEach(t => renderNode(t, 0));
     }
     return wrap;
   }
@@ -1869,7 +1941,8 @@ const App = (function () {
       const cols = data.columns.map(c => ({ name: c.name, color: c.color }));
       const tasks = Object.values(data.tasks).filter(t => !t.archived).map(t => ({
         title: t.title, notes: t.notes || '', priority: t.priority || 0, tags: (t.tags || []).slice(),
-        col: (data.columns.find(c => c.id === columnOf(t.id)) || {}).name || '', subtasks: (t.subtasks || []).map(s => s.title)
+        col: (data.columns.find(c => c.id === columnOf(t.id)) || {}).name || '',
+        parent: (t.parentId && data.tasks[t.parentId]) ? data.tasks[t.parentId].title : ''
       }));
       (data.templates = data.templates || []).push({ id: id(), name, cols, tasks, createdAt: new Date().toISOString() });
       persist();
@@ -1878,10 +1951,17 @@ const App = (function () {
   function useTemplate(tpl) {
     const byName = {}; data.columns.forEach(c => byName[(c.name || '').toLowerCase()] = c.id);
     (tpl.cols || []).forEach(tc => { if (!byName[(tc.name || '').toLowerCase()]) { const c = { id: id(), name: tc.name }; if (tc.color) c.color = tc.color; data.columns.push(c); data.order[c.id] = []; byName[(c.name || '').toLowerCase()] = c.id; } });
+    const titleToId = {};
     (tpl.tasks || []).forEach(tt => {
       const colId = byName[(tt.col || '').toLowerCase()] || data.columns[0].id;
       const t = newTask(tt.title, colId); t.notes = tt.notes || ''; t.priority = tt.priority || 0; t.tags = (tt.tags || []).slice(); t.tags.forEach(ensureTagColor);
-      t.subtasks = (tt.subtasks || []).map(title => ({ id: id(), title, done: false }));
+      titleToId[(tt.title || '').toLowerCase()] = t.id;
+    });
+    // rewire nesting by matching parent titles
+    (tpl.tasks || []).forEach(tt => {
+      if (!tt.parent) return;
+      const cid = titleToId[(tt.title || '').toLowerCase()], pid = titleToId[(tt.parent || '').toLowerCase()];
+      if (cid && pid && cid !== pid) data.tasks[cid].parentId = pid;
     });
     persist(); render();
   }
@@ -2006,9 +2086,11 @@ const App = (function () {
   }
 
   /* ---- Card ---- */
-  function renderCard(t, colId, index) {
-    const card = el('div', 'card' + (t.done ? ' completed' : '') + (selectMode && selectedIds.has(t.id) ? ' selected' : ''));
+  function renderCard(t, colId, index, level) {
+    level = level || 0;
+    const card = el('div', 'card' + (t.done ? ' completed' : '') + (selectMode && selectedIds.has(t.id) ? ' selected' : '') + (level > 0 ? ' child' : ''));
     card.dataset.id = t.id;
+    if (level > 0) card.style.marginLeft = (level * 22) + 'px';
     card.draggable = true;
     card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/task', t.id); card.classList.add('dragging'); });
     card.addEventListener('dragend', () => card.classList.remove('dragging'));
@@ -2016,7 +2098,20 @@ const App = (function () {
     if (t.priority > 0) {
       const bar = el('div', 'prio-bar'); bar.style.background = PRIO[t.priority].color; card.appendChild(bar);
     }
+    // breadcrumb when a subtask is shown outside its parent's nest (board, agenda, etc.)
+    if (t.parentId && level === 0 && data.tasks[t.parentId]) {
+      const bc = el('div', 'breadcrumb', '↳ ' + escapeHtml(data.tasks[t.parentId].title || '(untitled)'));
+      bc.title = 'Open parent task';
+      bc.onclick = (e) => { e.stopPropagation(); openModal(t.parentId); };
+      card.appendChild(bc);
+    }
     const row = el('div', 'card-row');
+    if (hasChildren(t.id)) {
+      const car = el('button', 'caret-btn', t.collapsed ? '▸' : '▾');
+      car.title = t.collapsed ? 'Expand subtasks' : 'Collapse subtasks';
+      car.onclick = (e) => { e.stopPropagation(); t.collapsed = !t.collapsed; persist(); render(); };
+      row.appendChild(car);
+    }
     const cb = el('div', 'checkbox' + (t.done ? ' done' : ''));
     cb.onclick = (e) => { e.stopPropagation(); onComplete(t, () => { toggleDone(t); persist(); render(); }); };
     if (t.domain) { const dm = domainOf(t.domain); if (dm) { const dot = el('span'); dot.title = 'Domain: ' + dm.k; dot.style.cssText = 'flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:' + dm.c + ';'; row.appendChild(dot); } }
@@ -2048,9 +2143,9 @@ const App = (function () {
       badges.push('<span class="'+cls+'">'+ icon('calendar') + escapeHtml(dueLabel) +'</span>');
     }
     if (t.priority > 0) badges.push('<span class="badge secondary">'+ PRIO[t.priority].label +'</span>');
-    if (t.subtasks.length) {
-      const done = t.subtasks.filter(s=>s.done).length;
-      badges.push('<span class="badge sub">'+ icon('check') + done+'/'+t.subtasks.length +'</span>');
+    if (hasChildren(t.id)) {
+      const st = descendantStats(t.id);
+      badges.push('<span class="badge sub">'+ icon('check') + st.done+'/'+st.total +'</span>');
     }
     if (t.links.length) badges.push('<span class="badge secondary">'+ icon('link') + t.links.length +'</span>');
     if (t.notes && t.notes.trim()) badges.push('<span class="badge secondary">'+ icon('note') +'</span>');
@@ -2164,6 +2259,11 @@ const App = (function () {
     const sel = $('#m_column'); sel.innerHTML = '';
     data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
     sel.value = columnOf(taskId) || data.columns[0].id;
+    const pInfo = $('#m_parentInfo');
+    if (t.parentId && data.tasks[t.parentId]) {
+      pInfo.style.display = ''; pInfo.innerHTML = '↳ subtask of <a href="#" style="color:var(--accent);">' + escapeHtml(data.tasks[t.parentId].title || '(untitled)') + '</a>';
+      pInfo.querySelector('a').onclick = (e) => { e.preventDefault(); commitModal(); openModal(t.parentId); };
+    } else { pInfo.style.display = 'none'; pInfo.innerHTML = ''; }
     renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t); renderModalRelated(t);
     // Auto-expand "More options" only if this task already uses one of those advanced fields.
     const hasAdvanced = !!(t.estimate || t.start || (t.recur && t.recur !== 'none') || (t.blockedBy && t.blockedBy.length) ||
@@ -2232,28 +2332,27 @@ const App = (function () {
   }
   function renderModalSubtasks(t) {
     const box = $('#m_subtasks'); box.innerHTML = '';
-    t.subtasks.forEach((s, i) => {
+    const kids = childrenOf(t.id);
+    if (!kids.length) box.appendChild(el('div', 'small', 'No subtasks yet. Add one below — each becomes its own task you can schedule, prioritise, and nest further.'));
+    kids.forEach(ch => {
       const row = el('div','sub-item');
-      const cb = el('div','checkbox'+(s.done?' done':'')); cb.onclick = () => { s.done=!s.done; persist(); render(); };
-      const inp = el('input'); inp.type='text'; inp.value=s.title; inp.style.minWidth='120px';
-      inp.oninput = () => { s.title = inp.value; persist(); };
-      const due = el('input'); due.type='date'; due.value=s.due||''; due.title='Subtask due date'; due.style.cssText='width:140px; flex:0 0 auto;';
-      due.onchange = () => { s.due = due.value || null; persist(); };
-      const up = el('button','iconbtn','↑'); up.title='Move up'; up.onclick = () => { if(i>0){ const a=t.subtasks; const tmp=a[i-1]; a[i-1]=a[i]; a[i]=tmp; persist(); renderModalSubtasks(t); } };
-      const down = el('button','iconbtn','↓'); down.title='Move down'; down.onclick = () => { if(i<t.subtasks.length-1){ const a=t.subtasks; const tmp=a[i+1]; a[i+1]=a[i]; a[i]=tmp; persist(); renderModalSubtasks(t); } };
-      const prom = el('button','iconbtn','⤴'); prom.title='Promote to its own task'; prom.onclick = () => promoteSubtask(t,i);
-      const x = el('button','iconbtn','✕'); x.title='Delete subtask'; x.onclick = () => { t.subtasks.splice(i,1); persist(); renderModalSubtasks(t); render(); };
-      row.appendChild(cb); row.appendChild(inp); row.appendChild(due); row.appendChild(up); row.appendChild(down); row.appendChild(prom); row.appendChild(x);
+      const cb = el('div','checkbox'+(ch.done?' done':''));
+      cb.title = ch.done ? 'Mark not done' : 'Mark done';
+      cb.onclick = () => { if (!ch.done) onComplete(ch, () => { toggleDone(ch); persist(); renderModalSubtasks(t); render(); }); else { toggleDone(ch); persist(); renderModalSubtasks(t); render(); } };
+      const name = el('div', null, escapeHtml(ch.title || '(untitled)'));
+      name.style.cssText = 'flex:1; min-width:120px; cursor:pointer;' + (ch.done ? ' text-decoration:line-through; color:var(--muted);' : '');
+      name.title = 'Open this subtask';
+      name.onclick = () => { commitModal(); openModal(ch.id); };
+      const sc = descendantStats(ch.id);
+      const meta = el('span', 'small'); meta.style.cssText = 'flex:0 0 auto; color:var(--muted);';
+      meta.textContent = [ch.due ? fmtDue(ch.due) : '', sc.total ? ('⤷ ' + sc.done + '/' + sc.total) : ''].filter(Boolean).join(' · ');
+      const out = el('button','iconbtn','⤴'); out.title = 'Make top-level (outdent)';
+      out.onclick = () => { ch.parentId = null; persist(); renderModalSubtasks(t); render(); };
+      const x = el('button','iconbtn','✕'); x.title = 'Delete subtask';
+      x.onclick = () => { uiConfirm('Delete this subtask' + (descendantStats(ch.id).total ? ' and its own subtasks' : '') + '?', () => { deleteSubtree(ch.id); persist(); renderModalSubtasks(t); render(); }); };
+      row.appendChild(cb); row.appendChild(name); if (meta.textContent) row.appendChild(meta); row.appendChild(out); row.appendChild(x);
       box.appendChild(row);
     });
-  }
-  function promoteSubtask(parent, i) {
-    const s = parent.subtasks[i]; if (!s) return;
-    const col = columnOf(parent.id) || data.columns[0].id;
-    const nt = newTask(s.title || '(untitled)', col);
-    nt.due = s.due || null; nt.done = !!s.done; nt.completedAt = nt.done ? new Date().toISOString() : null;
-    parent.subtasks.splice(i, 1);
-    persist(); render(); renderModalSubtasks(parent);
   }
   function renderModalLinks(t) {
     const box = $('#m_links'); box.innerHTML = '';
@@ -2423,8 +2522,9 @@ const App = (function () {
     $('#m_subInput').onkeydown = (e) => {
       if (e.key === 'Enter' && e.target.value.trim()) {
         const t = data.tasks[editingId];
-        t.subtasks.push({ id:id(), title:e.target.value.trim(), done:false });
-        e.target.value=''; persist(); renderModalSubtasks(t);
+        const ch = newTask(e.target.value.trim(), columnOf(t.id) || data.columns[0].id);
+        ch.parentId = t.id;
+        e.target.value=''; persist(); renderModalSubtasks(t); render();
       }
     };
     $('#m_addLink').onclick = () => {
