@@ -95,6 +95,7 @@
     cursor: pointer; user-select: none; white-space: nowrap;
   }
   .chip.active { border-color: transparent; }
+  .chip.done .chip-lbl { text-decoration: line-through; opacity: .55; }
   .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .icononly { padding: 5px 9px; font-size: 16px; line-height: 1; }
   .addtask-top { font-weight: 700; padding: 7px 16px; font-size: 14px; border-radius: 8px;
@@ -1317,13 +1318,13 @@ const App = (function () {
     const box = $('#m_blockers'); box.innerHTML = '';
     (t.blockedBy || []).forEach(bid => {
       const b = data.tasks[bid]; if (!b) return;
-      const chip = el('span', 'chip', (b.done ? '✓ ' : '') + escapeHtml((b.title || '(untitled)').slice(0, 40)) + ' <span class="x">✕</span>');
+      const chip = el('span', 'chip' + (b.done ? ' done' : ''), '<span class="chip-lbl">' + (b.done ? '✓ ' : '') + escapeHtml((b.title || '(untitled)').slice(0, 40)) + '</span> <span class="x">✕</span>');
       chip.querySelector('.x').onclick = () => { t.blockedBy = t.blockedBy.filter(x => x !== bid); persist(); renderModalBlockers(t); render(); };
       box.appendChild(chip);
     });
     const sel = $('#m_blockerSelect'); sel.innerHTML = '<option value="">Add a blocking task…</option>';
     Object.values(data.tasks).forEach(o => {
-      if (o.id === t.id || o.archived || (t.blockedBy || []).includes(o.id)) return;
+      if (o.id === t.id || o.archived || o.done || (t.blockedBy || []).includes(o.id)) return;
       const op = el('option'); op.value = o.id; op.textContent = (o.title || '(untitled)').slice(0, 40); sel.appendChild(op);
     });
   }
@@ -1335,15 +1336,15 @@ const App = (function () {
     const box = $('#m_related'); box.innerHTML = '';
     (t.related || []).forEach(rid => {
       const r = data.tasks[rid]; if (!r) return;
-      const chip = el('span', 'chip'); chip.style.cursor = 'pointer';
-      chip.innerHTML = (r.done ? '✓ ' : '') + escapeHtml((r.title || '(untitled)').slice(0, 40)) + ' <span class="x" style="cursor:pointer;opacity:.7;">✕</span>';
+      const chip = el('span', 'chip' + (r.done ? ' done' : '')); chip.style.cursor = 'pointer';
+      chip.innerHTML = '<span class="chip-lbl">' + (r.done ? '✓ ' : '') + escapeHtml((r.title || '(untitled)').slice(0, 40)) + '</span> <span class="x" style="cursor:pointer;opacity:.7;">✕</span>';
       chip.onclick = () => { commitModal(); openModal(rid); };  // jump to the related task
       chip.querySelector('.x').onclick = (e) => { e.stopPropagation(); unrelate(t, rid); persist(); renderModalRelated(t); render(); };
       box.appendChild(chip);
     });
     const sel = $('#m_relatedSelect'); sel.innerHTML = '<option value="">Link a related task…</option>';
     Object.values(data.tasks).forEach(o => {
-      if (o.id === t.id || o.archived || (t.related || []).includes(o.id)) return;
+      if (o.id === t.id || o.archived || o.done || (t.related || []).includes(o.id)) return;
       const op = el('option'); op.value = o.id; op.textContent = (o.title || '(untitled)').slice(0, 40); sel.appendChild(op);
     });
   }
