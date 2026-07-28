@@ -122,6 +122,9 @@
   .chip.active { border-color: transparent; }
   .count { color: var(--muted); font-size: 12px; white-space: nowrap; }
   .icononly { padding: 5px 9px; font-size: 16px; line-height: 1; }
+  .addtask-top { font-weight: 700; padding: 7px 16px; font-size: 14px; border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.15); white-space: nowrap; }
+  .addtask-top:hover { filter: brightness(1.08); }
   .ghost.on { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
   .filterBtn-dot { position: relative; }
   .filterBtn-dot::after { content:""; position:absolute; top:3px; right:3px; width:7px; height:7px; border-radius:50%; background: var(--accent); }
@@ -352,6 +355,7 @@
   <div class="toolbar">
     <div class="seg" id="viewSeg"></div>
     <button class="ghost icononly" id="moreViewsBtn" title="More views" aria-haspopup="true">⋯</button>
+    <button class="primary addtask-top" id="addTaskTop" title="Add a new task">+ Add task</button>
     <span class="grow"></span>
     <span class="count" id="count"></span>
     <input class="search" id="search" type="search" placeholder="Search…" />
@@ -2500,9 +2504,9 @@ const App = (function () {
       else if (e.key === '7') { data.ui.view = 'plan'; saveOut(); render(); }
       else if (e.key === '8') { data.ui.view = 'insights'; saveOut(); render(); }
     });
-    $('#addTaskBtn').onclick = () => {
-      const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id);
-    };
+    const openNewTask = () => { const t = newTask('', data.columns[0].id); persist(); render(); openModal(t.id); };
+    $('#addTaskBtn').onclick = openNewTask;
+    $('#addTaskTop').onclick = openNewTask;
     // modal
     $('#m_close').onclick = closeModal;
     $('#m_save').onclick = closeModal;
