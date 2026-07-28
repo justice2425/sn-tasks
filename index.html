@@ -185,14 +185,32 @@
   .modal {
     background: var(--bg); border: 1px solid var(--border); border-radius: 12px;
     width: 100%; max-width: 560px; box-shadow: var(--shadow);
+    max-height: calc(100vh - 32px); display: flex; flex-direction: column;
   }
-  .modal-head { display: flex; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); gap: 8px; }
-  .modal-head .grow { flex: 1; }
-  .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; }
-  .modal-foot { display: flex; justify-content: space-between; padding: 12px 14px; border-top: 1px solid var(--border); align-items: center; }
+  .modal-head { display: flex; align-items: center; padding: 12px 14px; border-bottom: 1px solid var(--border); gap: 8px; flex: 0 0 auto; }
+  .modal-head .grow { flex: 1; min-width: 0; }
+  .modal-body { padding: 14px; display: flex; flex-direction: column; gap: 14px; overflow-y: auto; flex: 1 1 auto; }
+  .modal-foot { display: flex; justify-content: space-between; padding: 12px 14px; border-top: 1px solid var(--border); align-items: center; gap: 8px; flex: 0 0 auto; flex-wrap: wrap; }
+  .field { min-width: 0; }
   .field label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; font-weight: 600; }
-  .field-row { display: flex; gap: 10px; }
-  .field-row > .field { flex: 1; }
+  /* inputs must be able to shrink inside flex rows, or they overflow on mobile */
+  .field input, .field select, .field textarea { width: 100%; min-width: 0; box-sizing: border-box; }
+  .field-row { display: flex; gap: 10px; flex-wrap: wrap; }
+  .field-row > .field { flex: 1 1 150px; min-width: 0; }
+  .field-row > .field-sm { flex: 0 1 84px; }
+  .due-pair { display: flex; gap: 6px; }
+  .due-pair input[type=date] { flex: 1 1 auto; }
+  .due-pair input[type=time] { flex: 0 1 120px; }
+  /* "More options" progressive disclosure */
+  .more-toggle { display: flex; align-items: center; gap: 6px; width: 100%; justify-content: flex-start;
+    background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px;
+    font-weight: 600; color: var(--fg); cursor: pointer; }
+  .more-toggle:hover { background: var(--panel-2, var(--panel)); }
+  .more-toggle .caret { transition: transform .15s ease; display: inline-block; }
+  .more-toggle[aria-expanded="true"] .caret { transform: rotate(90deg); }
+  .more-fields { display: flex; flex-direction: column; gap: 14px; }
+  .opt-check { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; }
+  .opt-check input { width: auto; margin: 0; flex: 0 0 auto; }
 
   .subtasks .sub-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; flex-wrap: wrap; }
   .subtasks .sub-item input[type=text] { flex: 1; }
@@ -293,7 +311,6 @@
     <button class="ghost" id="rightNowBtn" title="What can I do right now?">⚡ Right now</button>
     <span class="grow"></span>
     <span class="count" id="count"></span>
-    <button class="ghost" id="speakBtn" title="Read today aloud">🔊</button>
     <button class="ghost" id="undoBtn" title="Undo (Ctrl/Cmd+Z)">↶ Undo</button>
     <button class="ghost" id="selectBtn" title="Select multiple tasks">Select</button>
     <button class="ghost" id="statsBtn" title="Board statistics & actions">Stats</button>
@@ -361,12 +378,13 @@
       <button class="iconbtn" id="m_close" title="Close">✕</button>
     </div>
     <div class="modal-body">
+      <!-- primary fields (always visible) -->
       <div class="field-row">
         <div class="field">
           <label>Due date / time</label>
-          <div style="display:flex; gap:6px;">
+          <div class="due-pair">
             <input id="m_due" type="date" />
-            <input id="m_dueTime" type="time" style="max-width:118px;" title="Optional time" />
+            <input id="m_dueTime" type="time" title="Optional time" />
           </div>
         </div>
         <div class="field">
@@ -382,93 +400,7 @@
           <label>List / Column</label>
           <select id="m_column"></select>
         </div>
-        <div class="field" style="max-width:110px;">
-          <label>Estimate (min)</label>
-          <input id="m_estimate" type="number" min="0" step="5" placeholder="—" />
-        </div>
       </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Start (hide until)</label>
-          <input id="m_start" type="date" />
-        </div>
-        <div class="field">
-          <label>Repeat</label>
-          <select id="m_recur">
-            <option value="none">Does not repeat</option>
-            <option value="daily">Daily</option>
-            <option value="weekdays">Every weekday</option>
-            <option value="weekly">Weekly</option>
-            <option value="monthly">Monthly</option>
-          </select>
-        </div>
-        <div class="field" style="max-width:80px;">
-          <label>Every</label>
-          <input id="m_recurEvery" type="number" min="1" value="1" />
-        </div>
-        <div class="field">
-          <label>Repeats from</label>
-          <select id="m_recurBasis">
-            <option value="due">Due date</option>
-            <option value="completed">Completion</option>
-          </select>
-        </div>
-      </div>
-      <div class="field">
-        <label>Blocked by</label>
-        <div id="m_blockers"></div>
-        <div class="inline-add">
-          <select id="m_blockerSelect"><option value="">Add a blocking task…</option></select>
-        </div>
-      </div>
-      <div class="field">
-        <label>Related (@)</label>
-        <div id="m_related"></div>
-        <div class="inline-add">
-          <select id="m_relatedSelect"><option value="">Link a related task…</option></select>
-        </div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Life domain</label>
-          <select id="m_domain"><option value="">— none —</option></select>
-        </div>
-        <div class="field">
-          <label>Impact</label>
-          <select id="m_impact">
-            <option value="0">—</option>
-            <option value="1">Low</option>
-            <option value="2">Medium</option>
-            <option value="3">High</option>
-          </select>
-        </div>
-        <div class="field">
-          <label>Energy needed</label>
-          <select id="m_energy">
-            <option value="">— any —</option>
-            <option value="low">Low</option>
-            <option value="med">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-        <div class="field" style="max-width:110px;">
-          <label>Actual (min)</label>
-          <input id="m_actual" type="number" min="0" step="5" placeholder="—" title="Log real time spent to calibrate your estimates" />
-        </div>
-      </div>
-      <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" id="m_mit" style="width:auto; margin:0;" />
-        ⭐ Make this a Most Important Task for today (max 3)
-      </label>
-      <div class="small" id="m_bump" style="display:none; color:var(--warning);"></div>
-      <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" id="m_pin" style="width:auto; margin:0;" />
-        Pin to top of its list
-      </label>
-      <label class="small" style="display:flex; align-items:center; gap:6px; cursor:pointer;">
-        <input type="checkbox" id="m_hideList" style="width:auto; margin:0;" />
-        Hide this task from the List view (it still appears on the Board)
-      </label>
       <div class="field">
         <label>Notes <span class="small" id="m_notesToggle" style="cursor:pointer; color:var(--accent); font-weight:400;">· preview</span></label>
         <textarea id="m_notes" placeholder="Details, context… Markdown supported (#, **bold**, - lists, [link](url))"></textarea>
@@ -485,13 +417,108 @@
           <input id="m_subInput" type="text" placeholder="Add a subtask and press Enter" />
         </div>
       </div>
-      <div class="field links">
-        <label>Links</label>
-        <div id="m_links"></div>
-        <div class="inline-add">
-          <input id="m_linkLabel" type="text" placeholder="Label (optional)" style="flex:0 0 160px" />
-          <input id="m_linkUrl" type="url" placeholder="https://…" />
-          <button class="ghost" id="m_addLink">Add</button>
+
+      <!-- More options (collapsed by default) -->
+      <button type="button" class="more-toggle" id="m_moreToggle" aria-expanded="false">
+        <span class="caret">▸</span> More options
+      </button>
+      <div id="m_more" class="more-fields" hidden>
+        <label class="opt-check">
+          <input type="checkbox" id="m_mit" />
+          ⭐ Make this a Most Important Task for today (max 3)
+        </label>
+        <div class="small" id="m_bump" style="display:none; color:var(--warning);"></div>
+        <div class="field-row">
+          <div class="field">
+            <label>Estimate (min)</label>
+            <input id="m_estimate" type="number" min="0" step="5" placeholder="—" />
+          </div>
+          <div class="field">
+            <label>Start (hide until)</label>
+            <input id="m_start" type="date" />
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Repeat</label>
+            <select id="m_recur">
+              <option value="none">Does not repeat</option>
+              <option value="daily">Daily</option>
+              <option value="weekdays">Every weekday</option>
+              <option value="weekly">Weekly</option>
+              <option value="monthly">Monthly</option>
+            </select>
+          </div>
+          <div class="field field-sm">
+            <label>Every</label>
+            <input id="m_recurEvery" type="number" min="1" value="1" />
+          </div>
+          <div class="field">
+            <label>Repeats from</label>
+            <select id="m_recurBasis">
+              <option value="due">Due date</option>
+              <option value="completed">Completion</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Blocked by</label>
+          <div id="m_blockers"></div>
+          <div class="inline-add">
+            <select id="m_blockerSelect"><option value="">Add a blocking task…</option></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Related (@)</label>
+          <div id="m_related"></div>
+          <div class="inline-add">
+            <select id="m_relatedSelect"><option value="">Link a related task…</option></select>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>Life domain</label>
+            <select id="m_domain"><option value="">— none —</option></select>
+          </div>
+          <div class="field">
+            <label>Impact</label>
+            <select id="m_impact">
+              <option value="0">—</option>
+              <option value="1">Low</option>
+              <option value="2">Medium</option>
+              <option value="3">High</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Energy needed</label>
+            <select id="m_energy">
+              <option value="">— any —</option>
+              <option value="low">Low</option>
+              <option value="med">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Actual (min)</label>
+            <input id="m_actual" type="number" min="0" step="5" placeholder="—" title="Log real time spent to calibrate your estimates" />
+          </div>
+        </div>
+        <label class="opt-check">
+          <input type="checkbox" id="m_pin" />
+          Pin to top of its list
+        </label>
+        <label class="opt-check">
+          <input type="checkbox" id="m_hideList" />
+          Hide this task from the List view (it still appears on the Board)
+        </label>
+        <div class="field links">
+          <label>Links</label>
+          <div id="m_links"></div>
+          <div class="inline-add">
+            <input id="m_linkLabel" type="text" placeholder="Label (optional)" style="flex:0 0 140px" />
+            <input id="m_linkUrl" type="url" placeholder="https://…" />
+            <button class="ghost" id="m_addLink">Add</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1672,20 +1699,6 @@ const App = (function () {
   }
 
   /* ---- Spoken daily briefing (offline TTS) ---- */
-  function speakDay() {
-    if (!('speechSynthesis' in window)) { uiConfirm('Text-to-speech isn’t available here.', () => {}); return; }
-    const today = todayStr(); const act = Object.values(data.tasks).filter(t => !t.archived && !t.done);
-    const overdue = act.filter(t => t.due && t.due < today).sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
-    const todayT = act.filter(t => t.due === today).sort((a, b) => dueKey(a).localeCompare(dueKey(b)));
-    const parts = [];
-    if (!overdue.length && !todayT.length) parts.push('Nothing is due today. Nice work.');
-    else {
-      parts.push('You have ' + todayT.length + ' task' + (todayT.length === 1 ? '' : 's') + ' due today' + (overdue.length ? (' and ' + overdue.length + ' overdue') : '') + '.');
-      if (overdue.length) parts.push('Overdue: ' + overdue.slice(0, 8).map(t => t.title || 'untitled').join(', ') + '.');
-      if (todayT.length) parts.push('Due today: ' + todayT.slice(0, 8).map(t => t.title || 'untitled').join(', ') + '.');
-    }
-    try { window.speechSynthesis.cancel(); window.speechSynthesis.speak(new SpeechSynthesisUtterance(parts.join(' '))); } catch (e) {}
-  }
 
   /* ---- Command palette (Cmd/Ctrl+K) ---- */
   let palSel = 0, palResults = [];
@@ -2107,11 +2120,17 @@ const App = (function () {
     data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
     sel.value = columnOf(taskId) || data.columns[0].id;
     renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t); renderModalRelated(t);
+    // Auto-expand "More options" only if this task already uses one of those advanced fields.
+    const hasAdvanced = !!(t.estimate || t.start || (t.recur && t.recur !== 'none') || (t.blockedBy && t.blockedBy.length) ||
+      (t.related && t.related.length) || t.domain || t.impact || t.energy || t.actualMin != null || t.pinned || t.hideFromList ||
+      (t.links && t.links.length) || t.bumpCount > 0 || t.mit === todayStr());
+    setMore(hasAdvanced);
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
     $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '') + (t.done ? ' · done' : '');
     $('#overlay').classList.add('open');
     $('#m_title').focus();
   }
+  function setMore(open) { const box = $('#m_more'), btn = $('#m_moreToggle'); if (!box || !btn) return; box.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
   function closeModal() { commitModal(); editingId = null; $('#overlay').classList.remove('open'); render(); }
   function commitModal() {
     if (!editingId) return;
@@ -2305,8 +2324,6 @@ const App = (function () {
     // undo
     $('#undoBtn').onclick = undo;
     // spoken briefing (hide if TTS unavailable)
-    if (!('speechSynthesis' in window)) { const sb = $('#speakBtn'); if (sb) sb.style.display = 'none'; }
-    else $('#speakBtn').onclick = speakDay;
     // command palette
     $('#pal_input').oninput = renderPalette;
     $('#pal_input').onkeydown = (e) => {
@@ -2343,6 +2360,7 @@ const App = (function () {
     // modal
     $('#m_close').onclick = closeModal;
     $('#m_save').onclick = closeModal;
+    $('#m_moreToggle').onclick = () => setMore($('#m_more').hidden);
     $('#overlay').addEventListener('mousedown', (e) => { if (e.target.id === 'overlay') closeModal(); });
     $('#m_done').onclick = () => {
       const t = data.tasks[editingId]; if (!t) return;
