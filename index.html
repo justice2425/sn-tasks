@@ -2,6 +2,11 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
+<!-- Security hardening: deny by default; allow only the app's own inline code/styles and
+     theme assets. connect-src 'none' blocks all network egress (the app makes none); the SN
+     bridge uses postMessage, which CSP does not restrict. No external scripts, eval, plugins,
+     <base> hijacking, or form submissions are permitted. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https: http: data:; img-src https: http: data: blob:; font-src https: http: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
 <style>
@@ -731,6 +736,10 @@ const SNBridge = (function () {
 
   function listen() {
     const onMsg = (event) => {
+      // Only accept messages from the embedding Standard Notes frame. This rejects
+      // messages injected by other windows/iframes. (On mobile the source can be null,
+      // which we allow; in that path the message structure is still validated in handle().)
+      if (event.source && event.source !== window.parent) return;
       let data = event.data;
       if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { return; } }
       handle(data);
