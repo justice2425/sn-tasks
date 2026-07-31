@@ -140,7 +140,9 @@
   .emptybox .em-cta { margin-top: 14px; }
 
   /* Kanban */
-  .kanban { display: flex; gap: 12px; align-items: flex-start; min-height: 100%; }
+  /* Board: fixed-height column row so each column anchors in place and scrolls its
+     own tasks internally, instead of the whole surface drifting around. */
+  .kanban { display: flex; gap: 12px; align-items: flex-start; height: 100%; }
   .column {
     background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
     width: 290px; min-width: 290px; display: flex; flex-direction: column; max-height: 100%;
@@ -149,6 +151,7 @@
   .column-head {
     display: flex; align-items: center; gap: 4px; padding: 8px 10px; flex-wrap: wrap;
     border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 2; background: var(--panel); border-radius: var(--radius) var(--radius) 0 0;
   }
   .column-head .title { font-weight: 600; flex: 1 1 auto; cursor: text; }
   .column-head .num { color: var(--muted); font-size: 12px; margin-right: 2px; }
@@ -334,7 +337,12 @@
     #viewSeg { flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     #viewSeg::-webkit-scrollbar { display: none; }
     .seg button { padding: 8px 13px; white-space: nowrap; }
-    .kanban .column { width: 86vw; min-width: 86vw; }
+    /* Board: the column row itself is the horizontal scroller and snaps each column
+       into place, so swiping between lists anchors cleanly instead of drifting. */
+    .surface { overflow-x: hidden; }
+    .kanban { height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+    .kanban::-webkit-scrollbar { display: none; }
+    .kanban .column { width: 86vw; min-width: 86vw; scroll-snap-align: start; }
     .filterbar { gap: 6px; }
     /* stop iOS Safari zooming the page when a field gains focus (needs >=16px) */
     input[type=text], input[type=search], input[type=date], input[type=time], input[type=url], input[type=number], textarea, select { font-size: 16px; }
