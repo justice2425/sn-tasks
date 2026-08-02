@@ -337,6 +337,14 @@
     #viewSeg { flex: 1 1 100%; flex-wrap: nowrap; overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     #viewSeg::-webkit-scrollbar { display: none; }
     .seg button { padding: 8px 13px; white-space: nowrap; }
+    /* Reclaim vertical space for tasks: the floating + covers adding, and the
+       search + smart-view chips fold away behind the Filter button until needed. */
+    .addtask-top { display: none; }
+    .search { display: none; }
+    .smartviews { display: none; }
+    #app.filters-open .search { display: block; }
+    #app.filters-open .smartviews { display: flex; }
+    .banner { margin: 6px 10px 0; padding: 6px 10px; font-size: 13px; }
     /* Board: the column row itself is the horizontal scroller and snaps each column
        into place, so swiping between lists anchors cleanly instead of drifting. */
     .surface { overflow-x: hidden; }
@@ -2422,7 +2430,7 @@ const App = (function () {
     // view switcher is rendered dynamically (renderViewSwitcher); wire the menus
     $('#moreViewsBtn').onclick = (e) => { e.stopPropagation(); openMoreViews($('#moreViewsBtn')); };
     $('#overflowBtn').onclick = (e) => { e.stopPropagation(); openOverflow($('#overflowBtn')); };
-    $('#filterBtn').onclick = () => { const fbar = $('#filterBar'); fbar.hidden = !fbar.hidden; $('#filterBtn').classList.toggle('on', !fbar.hidden); };
+    $('#filterBtn').onclick = () => { const fbar = $('#filterBar'); fbar.hidden = !fbar.hidden; $('#filterBtn').classList.toggle('on', !fbar.hidden); document.getElementById('app').classList.toggle('filters-open', !fbar.hidden); };
     // inline quick-add
     const quickAddNow = () => {
       const inp = $('#quickAdd'); if (!inp.value.trim()) return;
