@@ -262,7 +262,15 @@
   .subtasks .sub-item input[type=text] { flex: 1; }
   .links .link-item { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
   .links .link-item input { flex: 1; }
-  .inline-add { display: flex; gap: 8px; margin-top: 6px; }
+  .inline-add { display: flex; gap: 8px; margin-top: 6px; align-items: center; }
+  /* attachments */
+  .file-item { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+  .file-item:first-child { border-top: none; }
+  .file-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; flex: 0 0 auto; background: var(--panel); }
+  .file-ic { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; font-size: 22px; border-radius: 6px; border: 1px solid var(--border); background: var(--panel); flex: 0 0 auto; }
+  .file-meta { flex: 1 1 auto; min-width: 0; }
+  .file-name { word-break: break-all; }
+  .file-sz { font-size: 12px; color: var(--muted); }
 
   .tag-editor { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .tag-editor .chip .x { cursor: pointer; opacity: .7; }
@@ -611,6 +619,16 @@
             <button class="ghost" id="m_addLink">Add</button>
           </div>
         </div>
+        <div class="field files">
+          <label>Attachments</label>
+          <div id="m_files"></div>
+          <div class="inline-add">
+            <input id="m_fileInput" type="file" multiple style="display:none" />
+            <button class="ghost" id="m_addFile">📎 Attach file</button>
+            <span class="small" id="m_fileMsg" style="color:var(--muted);"></span>
+          </div>
+          <div class="small" style="color:var(--muted-2); margin-top:4px;">Stored inside this encrypted note. Images are compressed automatically; other files up to 1 MB.</div>
+        </div>
       </div>
     </div>
     <div class="modal-foot">
@@ -889,6 +907,7 @@ const App = (function () {
       if (typeof t.actualMin === 'undefined') t.actualMin = null;
       if (typeof t.parentId === 'undefined') t.parentId = null;
       if (typeof t.collapsed === 'undefined') t.collapsed = false;
+      if (!Array.isArray(t.files)) t.files = [];
     });
     // One-time: promote legacy checklist subtasks into real nested child tasks.
     const colOf = (tid) => { for (const c of d.columns) if ((d.order[c.id] || []).includes(tid)) return c.id; return d.columns[0].id; };
@@ -979,7 +998,7 @@ const App = (function () {
       id: id(), title: (title||'').trim(), notes:'', due:null, dueTime:null, priority:0,
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
-      estimate:null, related:[], parentId:null, collapsed:false,
+      estimate:null, related:[], parentId:null, collapsed:false, files:[],
       domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
       createdAt: new Date().toISOString(), completedAt:null
     };
@@ -1039,7 +1058,7 @@ const App = (function () {
     next.createdAt = new Date().toISOString();
     const basisDate = (t.recurBasis === 'completed') ? todayStr() : t.due;
     next.due = computeNextDue(basisDate, t.recur, t.recurEvery);
-    next.subtasks = []; next.start = null; next.blockedBy = [];
+    next.subtasks = []; next.start = null; next.blockedBy = []; next.files = [];
     delete next._fromColumn;
     data.tasks[next.id] = next;
     const placeCol = placeColId || data.columns[0].id;
@@ -2258,6 +2277,7 @@ const App = (function () {
     if (t.recur && t.recur !== 'none') mini.push('⟳');
     if (t.notes && t.notes.trim()) mini.push(icon('note'));
     if (t.links.length) mini.push(icon('link') + t.links.length);
+    if (t.files && t.files.length) mini.push('📎 ' + t.files.length);
     if (t.estimate) mini.push('⏱ ' + fmtDur(t.estimate));
     if (t.related && t.related.length) mini.push('🔗 ' + t.related.length);
     if (mini.length) { const m = el('span', 'badge mini'); m.innerHTML = mini.join('<span class="mini-sep"></span>'); m.title = 'Task details'; mr.appendChild(m); }
@@ -2375,11 +2395,12 @@ const App = (function () {
       pInfo.style.display = ''; pInfo.innerHTML = '↳ subtask of <a href="#" style="color:var(--accent);">' + escapeHtml(data.tasks[t.parentId].title || '(untitled)') + '</a>';
       pInfo.querySelector('a').onclick = (e) => { e.preventDefault(); commitModal(); openModal(t.parentId); };
     } else { pInfo.style.display = 'none'; pInfo.innerHTML = ''; }
-    renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalBlockers(t); renderModalRelated(t);
+    renderModalTags(t); renderModalSubtasks(t); renderModalLinks(t); renderModalFiles(t); renderModalBlockers(t); renderModalRelated(t);
+    const fmsg = $('#m_fileMsg'); if (fmsg && !(t.files && t.files.length)) fmsg.textContent = '';
     // Auto-expand "More options" only if this task already uses one of those advanced fields.
     const hasAdvanced = !!(t.estimate || t.start || (t.recur && t.recur !== 'none') || (t.blockedBy && t.blockedBy.length) ||
       (t.related && t.related.length) || t.domain || t.impact || t.energy || t.actualMin != null || t.pinned || t.hideFromList ||
-      (t.links && t.links.length) || t.bumpCount > 0 || t.mit === todayStr());
+      (t.links && t.links.length) || (t.files && t.files.length) || t.bumpCount > 0 || t.mit === todayStr());
     setMore(hasAdvanced);
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
     $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '') + (t.done ? ' · done' : '');
@@ -2484,6 +2505,99 @@ const App = (function () {
       row.appendChild(node); row.appendChild(x);
       box.appendChild(row);
     });
+  }
+
+  /* ---- Attachments (embedded in the note, so they stay end-to-end encrypted) ---- */
+  const INLINE_IMG = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];  // rendered inline; SVG deliberately excluded
+  const FILE_CAP = 1024 * 1024;          // 1 MB hard cap for non-image files
+  const IMG_TARGET = 420 * 1024;         // compress images down toward ~420 KB
+  const IMG_MAXDIM = 1600;
+  function humanSize(b) { b = b || 0; return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
+  function isCleanB64(s) { return typeof s === 'string' && /^[A-Za-z0-9+/=\s]*$/.test(s) && s.length > 0; }
+  function fileDataUri(f) { return 'data:' + (/^[\w.+-]+\/[\w.+-]+$/.test(f.type || '') ? f.type : 'application/octet-stream') + ';base64,' + f.data; }
+  function readAsB64(file, cb) {
+    const r = new FileReader();
+    r.onload = () => cb({ ok: true, data: String(r.result).split(',')[1] || '', type: file.type || 'application/octet-stream', size: file.size });
+    r.onerror = () => cb({ ok: false, reason: 'Could not read that file.' });
+    r.readAsDataURL(file);
+  }
+  function compressImage(file, cb) {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, IMG_MAXDIM / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale)), h = Math.max(1, Math.round(img.height * scale));
+      const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d'); ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h); ctx.drawImage(img, 0, 0, w, h);
+      let q = 0.85, out = null;
+      for (;;) {
+        const dataUrl = cv.toDataURL('image/jpeg', q);
+        const b64 = dataUrl.split(',')[1] || '';
+        out = { ok: true, data: b64, type: 'image/jpeg', size: Math.floor(b64.length * 3 / 4) };
+        if (out.size <= IMG_TARGET || q <= 0.4) break;
+        q -= 0.12;
+      }
+      cb(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); cb({ ok: false, reason: 'Could not read this image (an unsupported format like HEIC?). Convert it to JPEG/PNG, or add it as a link.' }); };
+    img.src = url;
+  }
+  function attachFiles(t, fileList) {
+    const files = Array.from(fileList || []); if (!files.length) return;
+    const msg = $('#m_fileMsg'); let pending = files.length;
+    const done = (note) => { pending--; if (note) { if (msg) msg.textContent = note; } if (pending === 0) { persist(); renderModalFiles(t); render(); } };
+    files.forEach(file => {
+      const isImg = (file.type || '').indexOf('image/') === 0 && file.type !== 'image/svg+xml';
+      const store = (res) => {
+        if (!res.ok) { done(res.reason || 'Skipped a file.'); return; }
+        if (res.size > FILE_CAP && !isImg) { done('“' + file.name + '” is ' + humanSize(res.size) + ' — over the 1 MB limit. Add it as a link instead.'); return; }
+        t.files = t.files || [];
+        t.files.push({ id: id(), name: String(file.name || 'file').slice(0, 120), type: res.type, size: res.size, data: res.data });
+        done(res.size > FILE_CAP ? null : '');
+      };
+      if (isImg) compressImage(file, store); else readAsB64(file, store);
+    });
+    if (msg) msg.textContent = 'Processing…';
+  }
+  function openImageLightbox(f) {
+    if (!INLINE_IMG.includes(f.type) || !isCleanB64(f.data)) return;
+    const ov = el('div', 'overlay'); ov.style.cssText = 'display:flex; z-index:120; align-items:center; padding:20px;';
+    const wrap = el('div'); wrap.style.cssText = 'max-width:100%; max-height:100%; display:flex; flex-direction:column; gap:8px; align-items:center;';
+    const im = el('img'); im.src = fileDataUri(f); im.style.cssText = 'max-width:100%; max-height:80vh; border-radius:8px; box-shadow:var(--shadow);';
+    const bar = el('div'); bar.style.cssText = 'display:flex; gap:8px;';
+    const dl = el('a', 'ghost'); dl.textContent = '⤓ Download'; dl.href = fileDataUri(f); dl.download = f.name || 'image'; dl.style.cssText = 'padding:6px 12px; border:1px solid var(--border); border-radius:6px; color:var(--fg);';
+    const cl = el('button', 'ghost', 'Close'); cl.onclick = () => ov.remove();
+    bar.appendChild(dl); bar.appendChild(cl); wrap.appendChild(im); wrap.appendChild(bar); ov.appendChild(wrap);
+    ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+    document.body.appendChild(ov);
+  }
+  function renderModalFiles(t) {
+    const box = $('#m_files'); if (!box) return; box.innerHTML = '';
+    (t.files || []).forEach((f, i) => {
+      const row = el('div', 'file-item');
+      const inlineOk = INLINE_IMG.includes(f.type) && isCleanB64(f.data);
+      if (inlineOk) {
+        const thumb = el('img', 'file-thumb'); thumb.src = fileDataUri(f); thumb.title = 'Click to view'; thumb.onclick = () => openImageLightbox(f);
+        row.appendChild(thumb);
+      } else {
+        const ic = el('div', 'file-ic'); ic.textContent = '📄'; row.appendChild(ic);
+      }
+      const meta = el('div', 'file-meta');
+      meta.appendChild(el('div', 'file-name', escapeHtml(f.name || 'file')));
+      meta.appendChild(el('div', 'file-sz', humanSize(f.size)));
+      row.appendChild(meta);
+      if (isCleanB64(f.data)) {
+        const dl = el('a', 'iconbtn'); dl.textContent = '⤓'; dl.title = 'Download'; dl.href = fileDataUri(f); dl.download = f.name || 'file';
+        row.appendChild(dl);
+      }
+      const x = el('button', 'iconbtn', '✕'); x.title = 'Remove attachment';
+      x.onclick = () => { t.files.splice(i, 1); persist(); renderModalFiles(t); render(); };
+      row.appendChild(x);
+      box.appendChild(row);
+    });
+    const total = (t.files || []).reduce((s, f) => s + (f.size || 0), 0);
+    if (total > 0) { const tl = el('div', 'small'); tl.style.cssText = 'color:var(--muted); margin-top:6px;'; tl.textContent = (t.files.length) + ' attached · ' + humanSize(total) + ' total'; box.appendChild(tl); }
   }
 
   /* =======================  WIRING  ======================= */
@@ -2650,6 +2764,11 @@ const App = (function () {
       let u = url; if (!/^https?:\/\//i.test(u) && !/^mailto:/i.test(u)) u = 'https://' + u;
       t.links.push({ label: $('#m_linkLabel').value.trim(), url: u });
       $('#m_linkLabel').value=''; $('#m_linkUrl').value=''; persist(); renderModalLinks(t);
+    };
+    $('#m_addFile').onclick = () => { const fi = $('#m_fileInput'); if (fi) fi.click(); };
+    $('#m_fileInput').onchange = (e) => {
+      const t = data.tasks[editingId]; if (!t) return;
+      attachFiles(t, e.target.files); e.target.value = '';
     };
     $('#m_delete').onclick = () => {
       if (!editingId) return;
