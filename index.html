@@ -375,10 +375,13 @@
     /* leave room so the last card clears the floating + button */
     .surface { padding-bottom: 92px; }
     .fab { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
-    .overlay { padding: 0; align-items: flex-end; }
-    .overlay .modal { max-width: 100%; border-radius: 16px 16px 0 0; max-height: 92vh; }
+    /* Full-screen editor on phones: the task opens at the TOP (title, due, priority
+       first) as a real page, instead of a cramped bottom sheet stuck behind the keyboard. */
+    .overlay { padding: 0; align-items: stretch; }
+    .overlay .modal { max-width: 100%; width: 100%; border-radius: 0; height: 100vh; height: 100dvh; max-height: none; }
+    .modal-head { position: sticky; top: 0; z-index: 3; background: var(--bg); }
+    .modal-foot { position: sticky; bottom: 0; z-index: 3; background: var(--bg); padding-bottom: calc(10px + env(safe-area-inset-bottom)); }
     .modal-body { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
-    .modal-foot { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
   }
   /* bigger, comfortable touch targets on finger-driven devices */
   @media (pointer: coarse) {
@@ -2405,7 +2408,11 @@ const App = (function () {
     const created = t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '';
     $('#m_meta').textContent = (created ? 'Created ' + created : '') + (t.archived ? ' · archived' : '') + (t.done ? ' · done' : '');
     $('#overlay').classList.add('open');
-    $('#m_title').focus();
+    // always start scrolled to the top so the title / due / priority are what you see first
+    const mb = document.querySelector('.modal-body'); if (mb) mb.scrollTop = 0;
+    // Only pop the keyboard for a brand-new (untitled) task; opening an existing one
+    // shows the whole task without the keyboard covering half the screen.
+    if (!t.title) $('#m_title').focus();
   }
   function setMore(open) { const box = $('#m_more'), btn = $('#m_moreToggle'); if (!box || !btn) return; box.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
   function closeModal() { commitModal(); editingId = null; $('#overlay').classList.remove('open'); render(); }
