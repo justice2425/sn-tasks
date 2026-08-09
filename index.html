@@ -61,6 +61,8 @@
   }
   input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   textarea { resize: vertical; min-height: 60px; }
+  /* Notes: roomy and auto-growing (the drag handle is unusable by touch) */
+  #m_notes { min-height: 110px; max-height: 60vh; line-height: 1.5; }
   ::placeholder { color: var(--muted-2); }
 
   /* Toolbar -------------------------------------------------------------- */
@@ -368,8 +370,11 @@
     .surface { overflow-x: hidden; }
     .kanban { height: 100%; overflow-x: auto; scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
     .kanban::-webkit-scrollbar { display: none; }
-    .kanban .column { width: 86vw; min-width: 86vw; scroll-snap-align: start; }
+    /* one list fills the screen so you focus on it; swipe to the next */
+    .kanban .column { width: calc(100vw - 24px); min-width: calc(100vw - 24px); scroll-snap-align: center; }
     .filterbar { gap: 6px; }
+    /* comfortable, tall notes on phones */
+    #m_notes { min-height: 160px; }
     /* stop iOS Safari zooming the page when a field gains focus (needs >=16px) */
     input[type=text], input[type=search], input[type=date], input[type=time], input[type=url], input[type=number], textarea, select { font-size: 16px; }
     /* leave room so the last card clears the floating + button */
@@ -2410,9 +2415,17 @@ const App = (function () {
     $('#overlay').classList.add('open');
     // always start scrolled to the top so the title / due / priority are what you see first
     const mb = document.querySelector('.modal-body'); if (mb) mb.scrollTop = 0;
+    autoGrowNotes();
     // Only pop the keyboard for a brand-new (untitled) task; opening an existing one
     // shows the whole task without the keyboard covering half the screen.
     if (!t.title) $('#m_title').focus();
+  }
+  // The notes box grows to fit its content (the drag handle is unusable on touch).
+  function autoGrowNotes() {
+    const ta = $('#m_notes'); if (!ta || ta.style.display === 'none') return;
+    ta.style.height = 'auto';
+    const cap = Math.round((window.innerHeight || 800) * 0.55);
+    ta.style.height = Math.max(110, Math.min(ta.scrollHeight || 110, cap)) + 'px';
   }
   function setMore(open) { const box = $('#m_more'), btn = $('#m_moreToggle'); if (!box || !btn) return; box.hidden = !open; btn.setAttribute('aria-expanded', open ? 'true' : 'false'); }
   function closeModal() { commitModal(); editingId = null; $('#overlay').classList.remove('open'); render(); }
@@ -2648,6 +2661,8 @@ const App = (function () {
     };
     $('#m_estimate').onchange = commitModal;
 
+    // notes: grow to fit as you type
+    $('#m_notes').addEventListener('input', autoGrowNotes);
     // notes markdown preview toggle
     $('#m_notesToggle').onclick = () => {
       const editing = $('#m_notesPreview').style.display === 'none';
@@ -2657,7 +2672,7 @@ const App = (function () {
         $('#m_notesToggle').textContent = '· edit';
       } else {
         $('#m_notesPreview').style.display = 'none'; $('#m_notes').style.display = '';
-        $('#m_notesToggle').textContent = '· preview';
+        $('#m_notesToggle').textContent = '· preview'; autoGrowNotes();
       }
     };
 
