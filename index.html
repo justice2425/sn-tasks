@@ -2,11 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<!-- Security hardening: deny by default; allow only the app's own inline code/styles and
-     theme assets. connect-src 'none' blocks all network egress (the app makes none); the SN
-     bridge uses postMessage, which CSP does not restrict. No external scripts, eval, plugins,
-     <base> hijacking, or form submissions are permitted. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline' https: http: data:; img-src https: http: data: blob:; font-src https: http: data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<!-- Security hardening (Content-Security-Policy):
+     - script-src allows ONLY the one inline script element below, by its SHA-256 hash. Injected markup
+       (e.g. an onerror= attribute) can never run, and an edited script won't run until its
+       hash is updated: run tools/update-csp-hash.py (see README → Security).
+     - style-src / font-src / img-src allow only this page's own inline styles, data:/blob: URLs,
+       and the hosts Standard Notes serves its themes from: its web app, and the desktop app's
+       local server. Keep in sync with THEME_HOSTS in the script. Nothing else can be loaded,
+       so nothing can be sent out through image/font/style requests.
+     - connect-src/frame/worker/media/object are all 'none'. The app makes no network requests; the
+       SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
+     - base-uri and form-action 'none' stop <base> hijacking and form submissions.
+     A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-L1g/3eYmDKE/WkkxiM6bzaweZ16x9Ev3oXIqhpvhy4E='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
 <style>
@@ -90,6 +99,9 @@
   .seg button { border-radius: 0; border: none; padding: 5px 12px; }
   .seg button.active { background: var(--accent); color: var(--accent-fg); }
   .search { max-width: 240px; }
+  /* the hidden attribute must always win over component display rules (the filter
+     panel used to stay visible because .filterbar's display:flex overrode it) */
+  [hidden] { display: none !important; }
   .filterbar {
     display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     padding: 6px 12px; border-bottom: 1px solid var(--border); background: var(--bg);
@@ -131,6 +143,15 @@
     background: var(--accent); color: var(--accent-fg); border: none;
     box-shadow: 0 4px 14px rgba(0,0,0,.28); display: flex; align-items: center; justify-content: center; }
   .fab:hover { filter: brightness(1.08); background: var(--accent); }
+  /* one way to add per screen size: the top "+ Add task" button on wide screens, the
+     floating + on phones (the quick-add box stays on both) */
+  @media (min-width: 621px) { .fab { display: none; } }
+  /* single "today" strip replacing the separate Most-Important and due banners */
+  .banner.today { gap: 8px; flex-wrap: wrap; padding: 6px 10px; }
+  .banner.today .seg-part { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+  .banner.today .sep { opacity: .45; }
+  .banner.today.won { border-color: var(--success, #30a46c); background: color-mix(in srgb, var(--success, #30a46c) 12%, transparent); }
+  .banner.today button { padding: 2px 10px; }
 
   /* Board area ----------------------------------------------------------- */
   .surface { flex: 1 1 auto; overflow: auto; padding: 12px; }
@@ -246,7 +267,7 @@
   .field-row { display: flex; gap: 10px; flex-wrap: wrap; }
   .field-row > .field { flex: 1 1 150px; min-width: 0; }
   .field-row > .field-sm { flex: 0 1 84px; }
-  .due-pair { display: flex; gap: 6px; }
+  .due-pair { display: flex; gap: 6px; flex-wrap: wrap; }
   .due-pair input[type=date] { flex: 1 1 auto; }
   .due-pair input[type=time] { flex: 0 1 120px; }
   /* "More options" progressive disclosure */
@@ -373,6 +394,10 @@
     /* one list fills the screen so you focus on it; swipe to the next */
     .kanban .column { width: calc(100vw - 24px); min-width: calc(100vw - 24px); scroll-snap-align: center; }
     .filterbar { gap: 6px; }
+    /* editor: give the due date its own full-width row so date and time aren't clipped */
+    .field-row > .field.due-field { flex: 1 1 100%; }
+    .due-pair input[type=date] { flex: 1 1 60%; min-width: 150px; }
+    .due-pair input[type=time] { flex: 1 1 30%; min-width: 110px; }
     /* comfortable, tall notes on phones */
     #m_notes { min-height: 160px; }
     /* stop iOS Safari zooming the page when a field gains focus (needs >=16px) */
@@ -402,19 +427,36 @@
     .chip { padding: 5px 11px; }
     .fab { width: 58px; height: 58px; font-size: 28px; }
   }
+
+  /* ---- Accessibility & polish ---- */
+  /* clear keyboard focus ring for everyone navigating without a mouse */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+  .card:focus-visible, .checkbox:focus-visible, .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .card { transition: border-color .12s ease, box-shadow .12s ease; }
+  .card:active { transform: none; }
+  .banner.health { border-color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); }
+  /* gentle entrance for dialogs (disabled under reduced-motion below) */
+  .overlay.open .modal { animation: modalIn .18s ease; }
+  @keyframes modalIn { from { opacity: .4; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+  /* respect users who prefer less motion — kills swipe/level/reward/animation transitions */
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
 </style>
 </head>
 <body>
+<!-- Shown only if the script is blocked (e.g. the CSP script hash wasn't updated after an edit). -->
+<div id="bootFail" style="padding:16px; font:14px/1.4 system-ui, sans-serif;">Tasks couldn't start. If you just edited this file, update the script hash in the Content-Security-Policy (see README → Security).</div>
 <div id="app">
   <div class="toolbar">
-    <div class="seg" id="viewSeg"></div>
-    <button class="ghost icononly" id="moreViewsBtn" title="More views" aria-haspopup="true">⋯</button>
-    <button class="primary addtask-top" id="addTaskTop" title="Add a new task">+ Add task</button>
+    <div class="seg" id="viewSeg" role="tablist" aria-label="Views"></div>
+    <button class="ghost icononly" id="moreViewsBtn" title="More views" aria-label="More views" aria-haspopup="true">⋯</button>
+    <button class="primary addtask-top" id="addTaskTop" title="Add a new task" aria-label="Add a task">+ Add task</button>
     <span class="grow"></span>
     <span class="count" id="count"></span>
-    <input class="search" id="search" type="search" placeholder="Search…" />
-    <button class="ghost" id="filterBtn" title="Filter &amp; sort">☰ Filter</button>
-    <button class="ghost icononly" id="overflowBtn" title="More actions" aria-haspopup="true">⋮</button>
+    <input class="search" id="search" type="search" placeholder="Search…" aria-label="Search tasks" />
+    <button class="ghost" id="filterBtn" title="Filter &amp; sort" aria-label="Filter and sort">☰ Filter</button>
+    <button class="ghost icononly" id="overflowBtn" title="More actions" aria-label="More actions" aria-haspopup="true">⋮</button>
   </div>
 
   <div class="filterbar" id="filterBar" hidden>
@@ -479,14 +521,15 @@
 <div class="overlay" id="overlay">
   <div class="modal" role="dialog" aria-modal="true">
     <div class="modal-head">
-      <div class="checkbox" id="m_done" title="Toggle complete"></div>
-      <input class="grow" id="m_title" type="text" placeholder="Task title" />
-      <button class="iconbtn" id="m_close" title="Close">✕</button>
+      <div class="checkbox" id="m_done" title="Toggle complete" role="checkbox" tabindex="0" aria-label="Toggle complete"></div>
+      <input class="grow" id="m_title" type="text" placeholder="Task title" aria-label="Task title" />
+      <button class="iconbtn" id="m_menu" title="More actions" aria-label="More task actions" aria-haspopup="true">⋯</button>
+      <button class="iconbtn" id="m_close" title="Close" aria-label="Close editor">✕</button>
     </div>
     <div class="modal-body">
       <!-- primary fields (always visible) -->
       <div class="field-row">
-        <div class="field">
+        <div class="field due-field">
           <label>Due date / time</label>
           <div class="due-pair">
             <input id="m_due" type="date" />
@@ -583,8 +626,8 @@
           </div>
         </div>
         <div class="field-row">
-          <div class="field">
-            <label>Life domain</label>
+          <div class="field" id="m_domainField">
+            <label>Life area</label>
             <select id="m_domain"><option value="">— none —</option></select>
           </div>
           <div class="field">
@@ -640,14 +683,9 @@
       </div>
     </div>
     <div class="modal-foot">
-      <span style="display:flex; gap:8px;">
-        <button class="danger" id="m_delete">Delete</button>
-        <button class="ghost" id="m_complete">Complete</button>
-      </span>
-      <span style="display:flex; gap:10px; align-items:center;">
-        <span class="small" id="m_meta"></span>
-        <button class="primary" id="m_save">Save &amp; Close</button>
-      </span>
+      <span class="small" id="m_meta"></span>
+      <span class="small" style="color:var(--muted-2);">Changes save automatically</span>
+      <button class="primary" id="m_save">Done</button>
     </div>
   </div>
 </div>
@@ -691,6 +729,11 @@ const SNBridge = (function () {
   let saveTimer = null;
   let saveDelay = 250;
   let standalone = false;         // true when not embedded in SN (test harness / direct open)
+  let parentOrigin = null;        // origin of the host that registered us (pinned on first registration)
+  let streamedKey = null;         // session key the note stream was requested under
+  // https hosts whose theme stylesheets we accept (desktop uses http://localhost; mobile uses data: CSS).
+  // Keep in sync with style-src / font-src / img-src in the Content-Security-Policy above.
+  const THEME_HOSTS = ['app.standardnotes.com'];
 
   function uuid() {
     if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -702,45 +745,70 @@ const SNBridge = (function () {
   function isMobile() { return environment === 'mobile'; }
 
   function post(action, data, callback) {
-    if (!sessionKey) { queue.push({ action, data, callback }); return; }
+    if (!sessionKey || parentOrigin === null) { queue.push({ action, data, callback }); return; }
     const message = { action, data, messageId: uuid(), sessionKey, api: API_COMPONENT };
-    const stored = JSON.parse(JSON.stringify(message));
-    stored.callback = callback;
-    sentMessages.push(stored);
-    window.parent.postMessage(isMobile() ? JSON.stringify(message) : message, '*');
+    // Keep only what reply routing needs. (Storing a full copy of every message, as the
+    // reference relay does, retains a copy of the whole note, attachments included, on every save.)
+    if (typeof callback === 'function') {
+      sentMessages.push({ messageId: message.messageId, callback });
+      if (sentMessages.length > 200) {   // drop the oldest one-shot entry; never the stream subscription
+        const i = sentMessages.findIndex(m => m.callback !== onStreamed);
+        if (i !== -1) sentMessages.splice(i, 1);
+      }
+    }
+    // Send only to the origin that registered us, never '*', so note contents can't be
+    // delivered to a different page if the parent frame is navigated or replaced.
+    // (Hosts served from file:// or with an opaque origin, which some mobile builds may use,
+    // can't be addressed by origin; only in that case do we fall back to '*', as before.)
+    const target = /^https?:\/\/[^/]+$/i.test(parentOrigin) ? parentOrigin : '*';
+    window.parent.postMessage(isMobile() ? JSON.stringify(message) : message, target);
   }
 
+  const isObj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
   function handle(payload) {
-    if (!payload || !payload.action) return;
+    if (!isObj(payload) || typeof payload.action !== 'string') return;
     if (payload.action === Action.ComponentRegistered) {
+      if (typeof payload.sessionKey !== 'string' || !payload.sessionKey) return;
       sessionKey = payload.sessionKey;
-      if (payload.componentData) componentData = payload.componentData;
-      const d = payload.data || {};
-      environment = d.environment; platform = d.platform;
+      if (isObj(payload.componentData)) componentData = payload.componentData;
+      const d = isObj(payload.data) ? payload.data : {};
+      environment = typeof d.environment === 'string' ? d.environment : null;
+      platform = typeof d.platform === 'string' ? d.platform : null;
+      standalone = false;
       // flush queue
       const pending = queue.splice(0, queue.length);
       pending.forEach(m => post(m.action, m.data, m.callback));
-      activateThemes(d.activeThemeUrls || []);
+      activateThemes(Array.isArray(d.activeThemeUrls) ? d.activeThemeUrls : []);
       post(Action.ThemesActivated, {});
-      // begin streaming the open note
-      post(Action.StreamContextItem, {}, onStreamed);
+      // begin streaming the open note (again only if the host re-registers with a new session)
+      if (streamedKey !== sessionKey) {
+        streamedKey = sessionKey;
+        for (let i = sentMessages.length - 1; i >= 0; i--) if (sentMessages[i].callback === onStreamed) sentMessages.splice(i, 1);
+        post(Action.StreamContextItem, {}, onStreamed);
+      }
       return;
     }
     if (payload.action === Action.ActivateThemes) {
-      activateThemes((payload.data && payload.data.themes) || []);
+      activateThemes((isObj(payload.data) && Array.isArray(payload.data.themes)) ? payload.data.themes : []);
       return;
     }
-    // reply routing
-    if (!payload.original) return;
+    // reply routing: only replies to messages we actually sent are acted on
+    if (!isObj(payload.original) || typeof payload.original.messageId !== 'string') return;
     const idx = sentMessages.findIndex(m => m.messageId === payload.original.messageId);
     if (idx === -1) return;
     const original = sentMessages[idx];
-    if (original.callback) original.callback(payload.data);
+    if (original.callback !== onStreamed) sentMessages.splice(idx, 1);  // one-shot replies
+    original.callback(payload.data);
   }
 
   function onStreamed(data) {
-    const item = data && data.item;
-    if (!item) return;
+    const item = isObj(data) ? data.item : null;
+    if (!isObj(item) || !isObj(item.content)) return;
+    if (item.content.text != null && typeof item.content.text !== 'string') return;
+    // A save still waiting on its debounce belongs to the previous item: send it now, before
+    // switching, so an edit made just before changing notes can't be lost or misfiled.
+    if (saveTimer && lastItem && lastItem.uuid !== item.uuid) { clearTimeout(saveTimer); saveTimer = null; flush(); }
     lastItem = item;
     if (item.isMetadataUpdate) return;   // skip pure metadata pings
     if (onNote) onNote(text(), meta());
@@ -773,12 +841,24 @@ const SNBridge = (function () {
     post(Action.SaveItems, { items: [copy] });
   }
 
+  // Theme stylesheets are supplied by the host. Accept only the kinds of URL Standard Notes
+  // actually sends (its own web app, the desktop app's local server, or a base64 CSS data URL
+  // on mobile); the Content-Security-Policy enforces the same list.
+  function isAllowedThemeUrl(u) {
+    if (typeof u !== 'string' || !u || u.length > 2000000) return false;
+    if (/^data:text\/css[;,]/i.test(u)) return true;
+    let p; try { p = new URL(u); } catch (e) { return false; }
+    if (p.username || p.password) return false;
+    if (p.protocol === 'https:' && THEME_HOSTS.includes(p.hostname)) return true;
+    if (p.protocol === 'http:' && (p.hostname === 'localhost' || p.hostname === '127.0.0.1')) return true;
+    return false;
+  }
   function activateThemes(urls) {
-    if (activeThemes.sort().toString() === urls.slice().sort().toString()) return;
+    urls = urls.filter(isAllowedThemeUrl).slice(0, 10);
+    if (activeThemes.slice().sort().toString() === urls.slice().sort().toString()) return;
     // remove old
     Array.from(document.getElementsByClassName('sn-theme')).forEach(el => el.remove());
     urls.forEach(url => {
-      if (!url) return;
       const link = document.createElement('link');
       link.className = 'sn-theme'; link.rel = 'stylesheet'; link.type = 'text/css'; link.href = url;
       document.head.appendChild(link);
@@ -786,14 +866,28 @@ const SNBridge = (function () {
     activeThemes = urls;
   }
 
+  function originOf(u) { try { return new URL(u).origin; } catch (e) { return null; } }
+
   function listen() {
     const onMsg = (event) => {
-      // Only accept messages from the embedding Standard Notes frame. This rejects
-      // messages injected by other windows/iframes. (On mobile the source can be null,
-      // which we allow; in that path the message structure is still validated in handle().)
+      // Same checks as the official @standardnotes/component-relay, plus a source check:
+      // 1. the sender must be our parent frame (on mobile the source can be null);
+      // 2. if we know who embedded us (document.referrer), the sender must be that origin;
+      // 3. the first 'component-registered' pins the host origin, and every later message
+      //    must come from that same origin.
       if (event.source && event.source !== window.parent) return;
+      const origin = typeof event.origin === 'string' ? event.origin : '';
+      if (document.referrer) { const ro = originOf(document.referrer); if (ro && ro !== 'null' && ro !== origin) return; }
       let data = event.data;
-      if (typeof data === 'string') { try { data = JSON.parse(data); } catch (e) { return; } }
+      if (typeof data === 'string') {
+        if (data.length > 50 * 1024 * 1024) return;
+        try { data = JSON.parse(data); } catch (e) { return; }
+      }
+      if (!isObj(data)) return;
+      if (parentOrigin === null) {
+        if (data.action !== Action.ComponentRegistered) return;
+        parentOrigin = origin;
+      } else if (origin !== parentOrigin) return;
       handle(data);
     };
     window.addEventListener('message', onMsg, false);
@@ -806,14 +900,16 @@ const SNBridge = (function () {
       saveDelay = typeof opts.debounceSave === 'number' ? opts.debounceSave : 250;
       onNote = opts.onNote || null;
       listen();
-      // If we are not inside an SN iframe, no registration will arrive.
-      // Detect after a short grace period and run standalone with localStorage.
+      // If no registration arrives we are not inside Standard Notes. Standalone (demo) mode is
+      // only allowed when this page is the top-level window: a page opened directly. If some
+      // other site embeds us in a frame and never registers, we do nothing rather than load or
+      // show locally stored data inside someone else's page.
       setTimeout(() => {
-        if (!sessionKey) {
-          standalone = true;
-          if (opts.onStandalone) opts.onStandalone();
-        }
-      }, 600);
+        if (sessionKey) return;
+        let topLevel = false; try { topLevel = window.top === window.self; } catch (e) { topLevel = false; }
+        if (topLevel) { standalone = true; if (opts.onStandalone) opts.onStandalone(); }
+        else if (opts.onUnregistered) opts.onUnregistered();
+      }, 1500);
     },
     save,
     flushNow: flush,
@@ -831,11 +927,14 @@ const App = (function () {
   const TAG_COLORS = ['#2f6fed','#30a46c','#f5a623','#e5484d','#8e4ec6','#0aa5b8','#d6409f','#a18072'];
   const PRIO = { 0:{label:'None',color:'transparent'}, 1:{label:'Low',color:'#0aa5b8'},
                  2:{label:'Medium',color:'#f5a623'}, 3:{label:'High',color:'#e5484d'} };
-  const DOMAINS = [ {k:'Book',c:'#8e4ec6',i:'📖'}, {k:'Training',c:'#e5484d',i:'🚴'}, {k:'Family',c:'#30a46c',i:'👨‍👩‍👦'}, {k:'Giving',c:'#f5a623',i:'🎁'}, {k:'Work',c:'#2f6fed',i:'💼'} ];
+  // Life areas ("domains") are per-board settings now. These five are only seeded into boards
+  // created before settings existed (1.26 and earlier), so existing boards keep working as before.
+  const LEGACY_DOMAINS = [ {k:'Book',c:'#8e4ec6',i:'📖'}, {k:'Training',c:'#e5484d',i:'🚴'}, {k:'Family',c:'#30a46c',i:'👨‍👩‍👦'}, {k:'Giving',c:'#f5a623',i:'🎁'}, {k:'Work',c:'#2f6fed',i:'💼'} ];
+  function domains() { return (data && data.settings && data.settings.domains) || []; }
   const ENERGY = [ {k:'low',l:'Low'}, {k:'med',l:'Medium'}, {k:'high',l:'High'} ];
   const IMPACT = { 0:'—', 1:'Low', 2:'Medium', 3:'High' };
   const MIT_MAX = 3;
-  function domainOf(k){ return DOMAINS.find(d=>d.k===k)||null; }
+  function domainOf(k){ return domains().find(d=>d.k===k)||null; }
 
   let data = null;        // { schema, columns:[{id,name}], tasks:{id:task}, order:{colId:[taskId]}, tags:{name:color}, ui:{view} }
   let dirty = false;
@@ -846,6 +945,7 @@ const App = (function () {
   const undoStack = [];              // serialized prior states (not persisted)
   let lastSerialized = null;         // last saved serialization, used for undo capture
   let summaryDismissed = false;      // "due today" banner dismissed this session
+  let healthDismissed = false;       // note-size warning dismissed this session
   let activeSmart = null;            // currently active smart-view chip
   let calMonthOffset = 0;            // calendar view month offset (0 = current)
   let pomoRemaining = 0, pomoTimer = null;          // pomodoro timer state
@@ -862,87 +962,249 @@ const App = (function () {
       tasks: {},
       order: { [c1]:[], [c2]:[], [c3]:[] },
       tags: {},
-      ui: { view: 'list' }
+      ui: { view: 'list' },
+      settings: { doneColumn: c3, defaultColumn: null, confirmComplete: false, newTaskDueToday: false, domains: [] }
     };
   }
   function id() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID().slice(0,8) : Math.random().toString(36).slice(2,10); }
 
+  /* ---- untrusted-input validation ----
+     The note's JSON is treated as untrusted. It can be edited by hand, restored from an old
+     backup, pasted from someone else, or written by another extension. validate() rebuilds
+     the board from scratch, keeping only values of the expected type and format. As a result,
+     no raw string from the note can reach HTML, CSS, a URL or an object key unchecked, and
+     malformed data can't crash rendering. Unknown extra task fields are kept as-is (they're
+     never rendered), so data written by a newer version survives a round trip. */
+  const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+  const BAD_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+  const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+  const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,9})?)?(Z|[+-]\d{2}:?\d{2})?$/;
+  const HEX_RE = /^#[0-9a-f]{6}$/i;
+  const MIME_RE = /^[\w.+-]{1,64}\/[\w.+-]{1,128}$/;
+  const RECURS = ['none', 'daily', 'weekdays', 'weekly', 'monthly'];
+  const SORTS = ['manual', 'due', 'priority', 'created', 'alpha'];
+  const VIEW_KEYS = ['list', 'kanban', 'agenda', 'calendar', 'matrix', 'focus', 'plan'];
+  // Limits exist to keep hostile data from stalling the UI. They are far above real use, and
+  // free text (task notes) is never truncated, so validation can't silently lose a user's data.
+  const LIMITS = { tasks: 1000000, columns: 1000, tags: 500, links: 1000, files: 500, templates: 10000, tplTasks: 100000, title: Infinity, notes: Infinity, name: 10000, tag: 10000, url: 8000, winsPerDay: 10000, depth: 64 };
+  const obj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+  const dict = () => Object.create(null);           // prototype-free maps for user-chosen keys
+  const safeKey = (k) => typeof k === 'string' && !BAD_KEYS.has(k);
+  const okId = (v) => typeof v === 'string' && ID_RE.test(v) && !BAD_KEYS.has(v);
+  const str = (v, max) => { const s = typeof v === 'string' ? v : (typeof v === 'number' ? String(v) : ''); return max === Infinity ? s : s.slice(0, max); };
+  const bool = (v) => v === true;
+  const dateOrNull = (v) => (typeof v === 'string' && DATE_RE.test(v)) ? v : null;
+  const isoOrNull = (v) => {
+    if (typeof v !== 'string' || v.length > 64) return null;
+    if (ISO_RE.test(v)) return v;
+    const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toISOString() : null;   // older formats
+  };
+  const intIn = (v, lo, hi, dflt) => { const n = typeof v === 'number' ? v : (typeof v === 'string' && v.trim() ? Number(v) : NaN); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : dflt; };
+  const hexOr = (v, dflt) => (typeof v === 'string' && HEX_RE.test(v)) ? v.toLowerCase() : dflt;
+  const oneOf = (v, list, dflt) => list.includes(v) ? v : dflt;
+  function strList(v, maxItems, maxLen) {
+    if (!Array.isArray(v)) return [];
+    const out = [];
+    for (const x of v) { if (typeof x !== 'string') continue; const s = x.trim().slice(0, maxLen); if (s && !out.includes(s)) out.push(s); if (out.length >= maxItems) break; }
+    return out;
+  }
+  function isCleanB64(s) { return typeof s === 'string' && s.length > 0 && /^[A-Za-z0-9+/=\s]*$/.test(s); }
+
+  function validateFile(f) {
+    if (!obj(f) || typeof f.data !== 'string' || (f.data !== '' && !isCleanB64(f.data))) return null;
+    return {
+      id: okId(f.id) ? f.id : id(),
+      name: str(f.name, 120) || 'file',
+      type: (typeof f.type === 'string' && MIME_RE.test(f.type)) ? f.type : 'application/octet-stream',
+      size: intIn(f.size, 0, 1e10, Math.floor(f.data.length * 3 / 4)),
+      data: f.data
+    };
+  }
+  function validateTask(t, newId, mapTask, mapCol) {
+    const refs = (v) => Array.isArray(v) ? Array.from(new Set(v.map(mapTask).filter(Boolean))).filter(x => x !== newId).slice(0, 1000) : [];
+    const out = {};
+    // keep unknown fields from newer versions (never rendered), but never special keys
+    Object.keys(t).forEach(k => { if (safeKey(k)) out[k] = t[k]; });
+    const due = dateOrNull(t.due);
+    Object.assign(out, {
+      id: newId,
+      title: str(t.title, LIMITS.title),
+      notes: str(t.notes, LIMITS.notes),
+      due,
+      dueTime: (due && typeof t.dueTime === 'string' && TIME_RE.test(t.dueTime)) ? t.dueTime : null,
+      priority: intIn(t.priority, 0, 3, 0),
+      tags: strList(t.tags, LIMITS.tags, LIMITS.tag),
+      links: (Array.isArray(t.links) ? t.links : []).filter(obj).slice(0, LIMITS.links)
+               .map(l => ({ label: str(l.label, 500), url: str(l.url, LIMITS.url) })).filter(l => l.url),
+      subtasks: (Array.isArray(t.subtasks) ? t.subtasks : []).filter(obj).slice(0, 1000)
+               .map(s => ({ id: okId(s.id) ? s.id : null, title: str(s.title, LIMITS.title), due: dateOrNull(s.due), done: bool(s.done) })),
+      done: bool(t.done), archived: bool(t.archived), hideFromList: bool(t.hideFromList),
+      recur: oneOf(t.recur, RECURS, 'none'),
+      recurEvery: intIn(t.recurEvery, 1, 1000000, 1),
+      recurBasis: oneOf(t.recurBasis, ['due', 'completed'], 'due'),
+      start: dateOrNull(t.start),
+      blockedBy: refs(t.blockedBy),
+      related: refs(t.related),
+      pinned: bool(t.pinned),
+      estimate: (t.estimate == null || t.estimate === '') ? null : intIn(t.estimate, 1, 100000, null),
+      parentId: t.parentId == null ? null : (mapTask(t.parentId) || null),
+      collapsed: bool(t.collapsed),
+      files: (Array.isArray(t.files) ? t.files : []).slice(0, LIMITS.files).map(validateFile).filter(Boolean),
+      domain: (typeof t.domain === 'string' && t.domain.trim() && t.domain.length <= 40) ? t.domain : null,   // shown only if the area exists
+      impact: intIn(t.impact, 0, 3, 0),
+      energy: oneOf(t.energy, ['low', 'med', 'high'], null),
+      mit: dateOrNull(t.mit),
+      bumpCount: intIn(t.bumpCount, 0, 1e6, 0),
+      actualMin: (t.actualMin == null || t.actualMin === '') ? null : intIn(t.actualMin, 0, 1e6, null),
+      createdAt: isoOrNull(t.createdAt),
+      completedAt: isoOrNull(t.completedAt)
+    });
+    if (t._fromColumn != null) { const c = mapCol(t._fromColumn); if (c) out._fromColumn = c; else delete out._fromColumn; }
+    return out;
+  }
+  function validate(raw) {
+    const d = obj(raw) ? raw : {};
+    // columns (re-key any column whose id is missing, malformed or duplicated)
+    const colMap = new Map(); const columns = [];
+    (Array.isArray(d.columns) ? d.columns : []).filter(obj).slice(0, LIMITS.columns).forEach(c => {
+      let cid = okId(c.id) && !columns.some(x => x.id === c.id) ? c.id : id();
+      if (typeof c.id === 'string' && !colMap.has(c.id)) colMap.set(c.id, cid);
+      const col = Object.assign(extras(c, ['id', 'name', 'color', 'onComplete']), { id: cid, name: str(c.name, LIMITS.name).trim() || 'List',
+        onComplete: oneOf(c.onComplete, ['done', 'delete'], 'done') });
+      const color = hexOr(c.color, null); if (color) col.color = color;
+      columns.push(col);
+    });
+    if (!columns.length) defaultData().columns.forEach(c => columns.push(c));
+    const mapCol = (v) => (typeof v === 'string' && colMap.has(v)) ? colMap.get(v) : (columns.some(c => c.id === v) ? v : null);
+    // tasks (re-key malformed ids and rewrite every reference to them)
+    const taskMap = new Map(); const rawTasks = [];
+    const srcTasks = obj(d.tasks) ? d.tasks : {};
+    Object.keys(srcTasks).slice(0, LIMITS.tasks).forEach(k => {
+      const t = srcTasks[k]; if (!obj(t)) return;
+      const nid = (okId(k) && !taskMap.has(k)) ? k : id();
+      taskMap.set(k, nid); rawTasks.push([nid, t]);
+    });
+    const mapTask = (v) => (typeof v === 'string' && taskMap.has(v)) ? taskMap.get(v) : null;
+    const tasks = dict();
+    rawTasks.forEach(([nid, t]) => { tasks[nid] = validateTask(t, nid, mapTask, mapCol); });
+    // order
+    const order = dict();
+    columns.forEach(c => { order[c.id] = []; });
+    const placed = new Set();   // each task in exactly one column (sanitize() places orphans)
+    if (obj(d.order)) Object.keys(d.order).forEach(k => {
+      const cid = mapCol(k); if (!cid || !Array.isArray(d.order[k])) return;
+      d.order[k].forEach(tid => { const n = mapTask(tid); if (n && !placed.has(n)) { placed.add(n); order[cid].push(n); } });
+    });
+    // tag colors
+    const tags = dict();
+    if (obj(d.tags)) Object.keys(d.tags).slice(0, 5000).forEach(k => { const c = hexOr(d.tags[k], null); if (k.length <= LIMITS.tag && c) tags[k] = c; });
+    // ui (presentation only)
+    const u = obj(d.ui) ? d.ui : {};
+    const ui = Object.assign(extras(u, ['view', 'sort', 'density', 'hideCompletedInList', 'hiddenViews', 'planStart', 'planEnd']), {
+      view: oneOf(u.view, VIEW_KEYS, 'list'),
+      sort: oneOf(u.sort, SORTS, 'due'),
+      density: oneOf(u.density, ['cozy', 'compact'], 'cozy'),
+      hideCompletedInList: bool(u.hideCompletedInList),
+      hiddenViews: strList(u.hiddenViews, VIEW_KEYS.length, 20).filter(v => VIEW_KEYS.includes(v))
+    });
+    if (u.planStart != null) ui.planStart = intIn(u.planStart, 0, 1439, 540);
+    if (u.planEnd != null) ui.planEnd = intIn(u.planEnd, 0, 1439, 1020);
+    // templates
+    const templates = (Array.isArray(d.templates) ? d.templates : []).filter(obj).slice(0, LIMITS.templates).map(tp => ({
+      id: okId(tp.id) ? tp.id : id(),
+      name: str(tp.name, LIMITS.name) || 'Template',
+      cols: (Array.isArray(tp.cols) ? tp.cols : []).filter(obj).slice(0, LIMITS.columns).map(c => { const o = { name: str(c.name, LIMITS.name) }; const cc = hexOr(c.color, null); if (cc) o.color = cc; return o; }),
+      tasks: (Array.isArray(tp.tasks) ? tp.tasks : []).filter(obj).slice(0, LIMITS.tplTasks).map(x => ({
+        title: str(x.title, LIMITS.title), notes: str(x.notes, LIMITS.notes), priority: intIn(x.priority, 0, 3, 0),
+        tags: strList(x.tags, LIMITS.tags, LIMITS.tag), col: str(x.col, LIMITS.name), parent: str(x.parent, LIMITS.title)
+      })),
+      createdAt: isoOrNull(tp.createdAt)
+    }));
+    // wins log
+    const wins = dict();
+    if (obj(d.wins)) Object.keys(d.wins).forEach(k => { if (DATE_RE.test(k)) { const w = (Array.isArray(d.wins[k]) ? d.wins[k] : []).filter(x => typeof x === 'string').slice(0, LIMITS.winsPerDay); if (w.length) wins[k] = w; } });
+    // settings (per board). Boards saved before settings existed get the conventions the
+    // plugin used to hard-code, made explicit, so nothing changes for them; new boards
+    // start neutral. Every setting can be changed under ⋮ → Settings.
+    let settings;
+    const colByName = (re) => { const c = columns.find(x => re.test(x.name)); return c ? c.id : null; };
+    if (obj(d.settings)) {
+      const st = d.settings;
+      const seen = new Set();
+      settings = Object.assign(extras(st, ['doneColumn', 'defaultColumn', 'confirmComplete', 'newTaskDueToday', 'domains']), {
+        doneColumn: mapCol(st.doneColumn),
+        defaultColumn: mapCol(st.defaultColumn),
+        confirmComplete: bool(st.confirmComplete),
+        newTaskDueToday: bool(st.newTaskDueToday),
+        domains: (Array.isArray(st.domains) ? st.domains : []).filter(obj).slice(0, 100).map(x => ({
+          k: str(x.k, 40).trim(), c: hexOr(x.c, '#8b949e'), i: str(x.i, 16).trim()
+        })).filter(x => x.k && !seen.has(x.k) && seen.add(x.k))
+      });
+    } else {
+      settings = {
+        doneColumn: colByName(/^\s*done\s*$/i),
+        defaultColumn: colByName(/^\s*urgent\s*$/i),
+        confirmComplete: true,
+        newTaskDueToday: true,
+        domains: LEGACY_DOMAINS.map(x => Object.assign({}, x))
+      };
+      columns.forEach(c => { if (/^\s*important\s*$/i.test(c.name)) c.onComplete = 'delete'; });
+    }
+    return Object.assign(extras(d, ['schema', 'columns', 'tasks', 'order', 'tags', 'ui', 'templates', 'wins', 'settings']),
+      { schema: SCHEMA, columns, tasks, order, tags, ui, templates, wins, settings });
+  }
+  // One-time: promote legacy checklist subtasks into real nested child tasks (runs on validated data).
+  function migrate(d) {
+    const colOf = (tid) => { for (const c of d.columns) if (d.order[c.id].includes(tid)) return c.id; return d.columns[0].id; };
+    Object.values(d.tasks).forEach(parent => {
+      if (!parent.subtasks.length) return;
+      const col = colOf(parent.id);
+      parent.subtasks.forEach(s => {
+        const cid = (s.id && !d.tasks[s.id]) ? s.id : id();
+        const created = parent.createdAt || new Date().toISOString();
+        d.tasks[cid] = validateTask({ title: s.title.trim(), due: s.due, done: s.done, parentId: parent.id,
+          createdAt: created, completedAt: s.done ? created : null }, cid, (v) => d.tasks[v] ? v : null, () => null);
+        d.order[col].push(cid);
+      });
+      parent.subtasks = [];
+    });
+    return d;
+  }
+  function looksLikeBoard(p) {
+    return obj(p) && Array.isArray(p.columns) && p.columns.length > 0 &&
+      p.columns.some(c => obj(c) && typeof c.id === 'string') &&
+      (p.tasks === undefined || obj(p.tasks)) && (p.order === undefined || obj(p.order));
+  }
+  const extras = (src, known) => { const o = {}; if (obj(src)) Object.keys(src).forEach(k => { if (safeKey(k) && !known.includes(k)) o[k] = src[k]; }); return o; };
+  // Parse note text into a board. Text that isn't a Tasks board (e.g. an existing plain-text
+  // note switched to this editor) is kept in a task instead of being silently overwritten.
+  function boardFromText(text) {
+    if (!text || !text.trim()) return migrate(validate(defaultData()));
+    let parsed = null; try { parsed = JSON.parse(text); } catch (e) { parsed = null; }
+    if (looksLikeBoard(parsed)) return migrate(validate(parsed));
+    const d = migrate(validate(defaultData()));
+    const tid = id();
+    d.tasks[tid] = validateTask({ title: 'Original note text (kept by Tasks)', notes: text, createdAt: new Date().toISOString() }, tid, () => null, () => null);
+    d.order[d.columns[0].id].push(tid);
+    return d;
+  }
+
   function load(text) {
-    let parsed = null;
-    if (text && text.trim()) { try { parsed = JSON.parse(text); } catch (e) { parsed = null; } }
-    if (!parsed || !parsed.columns) { data = defaultData(); }
-    else { data = migrate(parsed); }
+    data = boardFromText(typeof text === 'string' ? text : '');
     // restore standalone state
     if (standalone) {
       try {
         const saved = localStorage.getItem('sn-tasks-standalone');
-        if (saved) data = migrate(JSON.parse(saved));
+        if (saved) data = boardFromText(saved);
       } catch (e) {}
     }
     sanitize();
     filters.sort = data.ui.sort || 'due';   // persisted sort; default to due date
     lastSerialized = JSON.stringify(data);
-    undoStack.length = 0;
-    summaryDismissed = false;
+    undoStack.length = 0; undoBytes = 0;
+    summaryDismissed = false; healthDismissed = false;
     render();
-  }
-  function migrate(d) {
-    d.schema = d.schema || 1;
-    d.tasks = d.tasks || {};
-    d.order = d.order || {};
-    d.tags = d.tags || {};
-    d.ui = d.ui || { view:'list' };
-    d.templates = d.templates || [];
-    if (!d.columns || !d.columns.length) d.columns = defaultData().columns;
-    // ensure newer flags exist on tasks/ui created by older versions
-    Object.values(d.tasks).forEach(t => {
-      if (typeof t.archived === 'undefined') t.archived = false;
-      if (typeof t.hideFromList === 'undefined') t.hideFromList = false;
-      if (typeof t.recur === 'undefined') t.recur = 'none';
-      if (typeof t.recurEvery === 'undefined') t.recurEvery = 1;
-      if (typeof t.recurBasis === 'undefined') t.recurBasis = 'due';
-      if (typeof t.start === 'undefined') t.start = null;
-      if (typeof t.dueTime === 'undefined') t.dueTime = null;
-      if (typeof t.pinned === 'undefined') t.pinned = false;
-      if (!Array.isArray(t.blockedBy)) t.blockedBy = [];
-      if (!Array.isArray(t.related)) t.related = [];
-      if (typeof t.estimate === 'undefined') t.estimate = null;
-      if (typeof t.domain === 'undefined') t.domain = null;
-      if (typeof t.impact === 'undefined') t.impact = 0;
-      if (typeof t.energy === 'undefined') t.energy = null;
-      if (typeof t.mit === 'undefined') t.mit = null;
-      if (typeof t.bumpCount === 'undefined') t.bumpCount = 0;
-      if (typeof t.actualMin === 'undefined') t.actualMin = null;
-      if (typeof t.parentId === 'undefined') t.parentId = null;
-      if (typeof t.collapsed === 'undefined') t.collapsed = false;
-      if (!Array.isArray(t.files)) t.files = [];
-    });
-    // One-time: promote legacy checklist subtasks into real nested child tasks.
-    const colOf = (tid) => { for (const c of d.columns) if ((d.order[c.id] || []).includes(tid)) return c.id; return d.columns[0].id; };
-    Object.values(d.tasks).forEach(parent => {
-      if (!Array.isArray(parent.subtasks) || !parent.subtasks.length) return;
-      const col = colOf(parent.id);
-      parent.subtasks.forEach(s => {
-        const cid = (s && s.id) ? s.id : id();
-        if (d.tasks[cid]) return;
-        d.tasks[cid] = {
-          id: cid, title: (s.title || '').trim(), notes:'', due: s.due || null, dueTime:null, priority:0,
-          tags:[], links:[], subtasks:[], done: !!s.done, archived:false, hideFromList:false,
-          recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
-          estimate:null, related:[], domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
-          parentId: parent.id, collapsed:false,
-          createdAt: parent.createdAt || new Date().toISOString(),
-          completedAt: s.done ? (parent.createdAt || new Date().toISOString()) : null
-        };
-        (d.order[col] = d.order[col] || []).push(cid);
-      });
-      parent.subtasks = [];
-    });
-    d.wins = d.wins || {};
-    if (typeof d.ui.hideCompletedInList === 'undefined') d.ui.hideCompletedInList = false;
-    if (typeof d.ui.density === 'undefined') d.ui.density = 'cozy';
-    if (!Array.isArray(d.ui.hiddenViews)) d.ui.hiddenViews = [];
-    return d;
   }
   function sanitize() {
     // ensure every column has an order array and every task is referenced exactly once
@@ -954,17 +1216,25 @@ const App = (function () {
         return false;
       });
     });
+    // drop order entries (and settings) that point at columns that no longer exist
+    Object.keys(data.order).forEach(k => { if (!data.columns.some(c => c.id === k)) delete data.order[k]; });
+    ['doneColumn', 'defaultColumn'].forEach(k => { if (data.settings[k] && !data.columns.some(c => c.id === data.settings[k])) data.settings[k] = null; });
     // orphan tasks -> first column
     Object.keys(data.tasks).forEach(tid => {
       if (!seen.has(tid)) { data.order[data.columns[0].id].push(tid); seen.add(tid); }
     });
-    // validate parent links: parent must exist, not self, and not form a cycle
+    // validate parent links: parent must exist, not self, not form a cycle, and not nest absurdly deep
     Object.values(data.tasks).forEach(t => {
       if (t.parentId && (!data.tasks[t.parentId] || t.parentId === t.id)) t.parentId = null;
     });
+    // One bounded walk per task: detach it if its ancestry loops or is deeper than LIMITS.depth,
+    // so a crafted chain can't make loading take quadratic time.
     Object.values(data.tasks).forEach(t => {
-      const chain = new Set([t.id]); let p = t.parentId;
-      while (p) { if (chain.has(p)) { t.parentId = null; break; } chain.add(p); p = data.tasks[p] ? data.tasks[p].parentId : null; }
+      const chain = new Set([t.id]); let p = t.parentId, depth = 0;
+      while (p) {
+        if (chain.has(p) || ++depth > LIMITS.depth) { t.parentId = null; break; }
+        chain.add(p); p = data.tasks[p] ? data.tasks[p].parentId : null;
+      }
     });
   }
 
@@ -974,19 +1244,26 @@ const App = (function () {
     if (standalone) { try { localStorage.setItem('sn-tasks-standalone', text); } catch (e) {} return; }
     SNBridge.save(text, previewText());
   }
+  // Undo keeps up to 60 prior states, capped by total size so boards with large
+  // attachments can't grow memory without bound.
+  const UNDO_MAX = 60, UNDO_MAX_BYTES = 40 * 1024 * 1024;
+  let undoBytes = 0;
   function persist() {
     dirty = true;
     // record the previous saved state as an undo point
     if (lastSerialized !== null) {
       const cur = JSON.stringify(data);
-      if (cur !== lastSerialized) { undoStack.push(lastSerialized); if (undoStack.length > 60) undoStack.shift(); }
+      if (cur !== lastSerialized) {
+        undoStack.push(lastSerialized); undoBytes += lastSerialized.length;
+        while (undoStack.length > UNDO_MAX || (undoBytes > UNDO_MAX_BYTES && undoStack.length > 1)) undoBytes -= undoStack.shift().length;
+      }
     }
     saveOut();
   }
   function undo() {
     if (!undoStack.length) return;
-    const prev = undoStack.pop();
-    data = migrate(JSON.parse(prev));
+    const prev = undoStack.pop(); undoBytes -= prev.length;
+    data = boardFromText(prev);
     sanitize();
     saveOut();        // writes prev as current; does not push a new undo point
     render();
@@ -998,6 +1275,23 @@ const App = (function () {
     let s = open + ' open task' + (open===1?'':'s') + ' · ' + all.length + ' total';
     if (next) s += ' · next due ' + next.due;
     return s;
+  }
+  /* ---- Note health: keep an eye on total size (attachments live in the note) ---- */
+  const NOTE_WARN_BYTES = 2 * 1024 * 1024;   // heuristic: large notes can slow SN sync
+  function noteBytes() { try { return new Blob([JSON.stringify(data)]).size; } catch (e) { return JSON.stringify(data).length; } }
+  function attachmentBytes() { let n = 0; Object.values(data.tasks).forEach(t => (t.files || []).forEach(f => { n += Math.floor(((f.data && f.data.length) || 0) * 3 / 4); })); return n; }
+  function humanBytes(b) { b = b || 0; return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
+  function renderHealthBanner() {
+    const old = $('#healthBanner'); if (old) old.remove();
+    if (healthDismissed) return;
+    const bytes = noteBytes(); if (bytes < NOTE_WARN_BYTES) return;
+    const banner = el('div', 'banner health'); banner.id = 'healthBanner';
+    banner.appendChild(el('span', 'grow', '⚠️ This note is ' + humanBytes(bytes) + ' — large notes can slow Standard Notes sync. Attachments are the usual cause.'));
+    const view = el('button', 'ghost', 'Details'); view.onclick = () => openStats();
+    const x = el('button', 'iconbtn', '✕'); x.title = 'Dismiss'; x.setAttribute('aria-label', 'Dismiss note-size warning');
+    x.onclick = () => { healthDismissed = true; renderHealthBanner(); };
+    banner.appendChild(view); banner.appendChild(x);
+    const surface = $('#surface'); surface.parentNode.insertBefore(banner, surface);
   }
 
   /* ---- task helpers ---- */
@@ -1015,17 +1309,32 @@ const App = (function () {
     (data.order[columnId] = data.order[columnId] || []).push(t.id);
     return t;
   }
+  // While render() runs, lookups use a one-off index (rx) so drawing N cards costs O(N), not
+  // O(N²); without it a large or crafted board could freeze the editor. Outside render() the
+  // helpers compute directly from data, so they can never see a stale index.
+  let rx = null;
+  function buildIndex() {
+    const col = new Map(), idx = new Map(), kids = new Map(); let i = 0;
+    data.columns.forEach(c => (data.order[c.id] || []).forEach(tid => { if (!col.has(tid)) col.set(tid, c.id); idx.set(tid, i++); }));
+    Object.values(data.tasks).forEach(t => { if (t.parentId) { if (!kids.has(t.parentId)) kids.set(t.parentId, []); kids.get(t.parentId).push(t); } });
+    kids.forEach(list => list.sort((a, b) => (idx.get(a.id) ?? 1e9) - (idx.get(b.id) ?? 1e9)));
+    return { col, kids };
+  }
   function columnOf(taskId) {
+    if (rx) return rx.col.get(taskId) ?? null;
     for (const c of data.columns) if ((data.order[c.id]||[]).includes(taskId)) return c.id;
     return null;
   }
   /* ---- task hierarchy (nested subtasks via parentId) ---- */
-  function orderIndexMap() { const m = {}; let i = 0; data.columns.forEach(c => (data.order[c.id] || []).forEach(tid => { m[tid] = i++; })); return m; }
-  function childrenOf(pid) { const idx = orderIndexMap(); return Object.values(data.tasks).filter(t => t.parentId === pid).sort((a, b) => (idx[a.id] ?? 1e9) - (idx[b.id] ?? 1e9)); }
-  function hasChildren(pid) { return Object.values(data.tasks).some(t => t.parentId === pid); }
+  function orderIndexMap() { const m = Object.create(null); let i = 0; data.columns.forEach(c => (data.order[c.id] || []).forEach(tid => { m[tid] = i++; })); return m; }
+  function childrenOf(pid) {
+    if (rx) return (rx.kids.get(pid) || []).slice();
+    const idx = orderIndexMap(); return Object.values(data.tasks).filter(t => t.parentId === pid).sort((a, b) => (idx[a.id] ?? 1e9) - (idx[b.id] ?? 1e9));
+  }
+  function hasChildren(pid) { return rx ? rx.kids.has(pid) : Object.values(data.tasks).some(t => t.parentId === pid); }
   function descendantStats(pid) {
     let done = 0, total = 0;
-    (function rec(p) { Object.values(data.tasks).forEach(t => { if (t.parentId === p && !t.archived) { total++; if (t.done) done++; rec(t.id); } }); })(pid);
+    (function rec(p) { childrenOf(p).forEach(t => { if (!t.archived) { total++; if (t.done) done++; rec(t.id); } }); })(pid);
     return { done, total };
   }
   function deleteSubtree(taskId) { childrenOf(taskId).slice().forEach(c => deleteSubtree(c.id)); deleteTask(taskId); }
@@ -1052,11 +1361,17 @@ const App = (function () {
     persist(); render();
   }
   function findDoneColumn() {
-    return data.columns.find(c => /^\s*done\s*$/i.test(c.name || '')) || null;
+    return data.columns.find(c => c.id === data.settings.doneColumn) || null;
   }
+  // Lists set to "delete when completed" (⋮ → Settings → Completing tasks).
   function isImportantColumn(colId) {
     const c = data.columns.find(x => x.id === colId);
-    return !!(c && /^\s*important\s*$/i.test(c.name || ''));
+    return !!(c && c.onComplete === 'delete');
+  }
+  // Where new tasks go when they aren't added inside a specific list.
+  function defaultColumnId() {
+    const c = data.columns.find(x => x.id === data.settings.defaultColumn);
+    return (c || data.columns[0]).id;
   }
   // Create the next occurrence of a recurring task; returns its id (or null).
   function spawnNextOccurrence(t, placeColId) {
@@ -1097,21 +1412,24 @@ const App = (function () {
             changed = true;
           }
         });
-        if (changed) undoStack[i] = JSON.stringify(s);
+        if (changed) { undoBytes -= undoStack[i].length; undoStack[i] = JSON.stringify(s); undoBytes += undoStack[i].length; }
       } catch (e) {}
     }
   }
-  // Permanently delete a task: save, then scrub it from undo history (not recoverable in-session).
+  // Delete a task and scrub it from this session's undo history. (Standard Notes' own note
+  // revision history may still contain it; that is outside this editor's control.)
   function hardDelete(taskId) { deleteTask(taskId); persist(); scrubUndo([taskId]); }
 
-  // Decide what "completing" a task means. Tasks in a "Work" list are deleted
-  // (after confirmation) instead of being marked done. Everything else toggles normally.
+  // Decide what "completing" a task means. Tasks in a list set to "delete when completed"
+  // are deleted (always after confirmation). Everything else is marked done, with a
+  // confirmation only if the board's "Confirm before completing" setting is on.
   function onComplete(t, proceed) {
     const colId = columnOf(t.id);
     // Only intercept when completing (checking). Un-checking always toggles normally.
     if (!t.done) {
       if (isImportantColumn(colId)) {
-        uiConfirm('Complete and delete this Important task?', () => {
+        const cn = (data.columns.find(x => x.id === colId) || {}).name || 'this list';
+        uiConfirm('Complete and delete this task? Tasks in “' + cn + '” are deleted when completed.', () => {
           spawnNextOccurrence(t, colId);   // recurring tasks still respawn first
           if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
           hardDelete(t.id);
@@ -1119,12 +1437,13 @@ const App = (function () {
         });
         return;
       }
-      // Any other list: confirm, then complete (mark done + move to a "Done" column).
-      uiConfirm('Mark this task complete?', () => {
-        toggleDone(t);          // marks done, spawns any recurrence, moves to a Done column
+      // Any other list: complete (mark done + move to the Done list, if one is set).
+      const complete = () => {
+        toggleDone(t);          // marks done, spawns any recurrence, moves to the Done list
         if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
         persist(); render();
-      });
+      };
+      if (data.settings.confirmComplete) uiConfirm('Mark this task complete?', complete); else complete();
       return;
     }
     proceed();
@@ -1152,6 +1471,10 @@ const App = (function () {
     }
     return data.tags[name];
   }
+  // Colours are validated when the note loads; hexOr() here is a second, independent guard,
+  // because these values are placed inside HTML style attributes.
+  function tagColor(name) { return hexOr(ensureTagColor(name), '#2f6fed'); }
+  function colColor(col) { return col ? hexOr(col.color, null) : null; }
   function allTags() { return Array.from(new Set(Object.values(data.tasks).flatMap(t => t.tags))).sort(); }
 
   /* ---- date helpers ---- */
@@ -1266,18 +1589,20 @@ const App = (function () {
 
   /* ---- minimal, safe Markdown renderer for task notes ---- */
   function renderMarkdown(src) {
+    // Quantifiers are bounded so crafted input (e.g. 100k "[" or "`") can't make these
+    // regexes take quadratic time and freeze the editor.
     const inline = (s) => escapeHtml(s)
-      .replace(/`([^`]+)`/g, '<code>$1</code>')
-      .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-      .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-      .replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, (m, txt, url) => {
+      .replace(/`([^`\n]{1,1000})`/g, '<code>$1</code>')
+      .replace(/\*\*([^*\n]{1,1000})\*\*/g, '<strong>$1</strong>')
+      .replace(/\*([^*\n]{1,1000})\*/g, '<em>$1</em>')
+      .replace(/\[([^\]\n]{1,500})\]\(([^)\s]{1,4000})\)/g, (m, txt, url) => {
         const u = safeUrl(url);
         return u ? '<a href="' + u + '" target="_blank" rel="noopener noreferrer">' + txt + '</a>' : txt;
       });
     let html = '', listType = null;
     const closeList = () => { if (listType) { html += listType === 'ul' ? '</ul>' : '</ol>'; listType = null; } };
     for (const raw of String(src || '').split('\n')) {
-      const line = raw.replace(/\s+$/, '');
+      const line = raw.trimEnd();
       if (!line.trim()) { closeList(); continue; }
       let m;
       if ((m = line.match(/^(#{1,3})\s+(.*)$/))) { closeList(); const lvl = m[1].length; html += '<h' + lvl + '>' + inline(m[2]) + '</h' + lvl + '>'; continue; }
@@ -1306,8 +1631,8 @@ const App = (function () {
     if (!selectMode) { bb.style.display = 'none'; return; }
     bb.style.display = 'flex';
     $('#bulkCount').textContent = selectedIds.size + ' selected';
-    $('#bulkMove').innerHTML = '<option value="">Move to…</option>' +
-      data.columns.map(c => '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>').join('');
+    const bm = $('#bulkMove'); bm.innerHTML = '<option value="">Move to…</option>';
+    data.columns.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; bm.appendChild(o); });
   }
 
   /* ---- smart views ---- */
@@ -1329,14 +1654,14 @@ const App = (function () {
     // active transient-filter chips (dismissible)
     if (filters.rightNow) {
       const m = filters.rightNow.mins, e = filters.rightNow.energy;
-      const label = '⚡ ' + (m ? '≤' + fmtDur(m) : 'any time') + (e ? ' · ' + e + ' energy' : '');
+      const label = escapeHtml('⚡ ' + (m ? '≤' + fmtDur(m) : 'any time') + (e ? ' · ' + e + ' energy' : ''));
       const chip = el('span', 'chip active', label + ' <span class="x">✕</span>'); chip.style.background = 'var(--accent)'; chip.style.color = '#fff';
       chip.onclick = () => { filters.rightNow = null; render(); };
       wrap.appendChild(chip);
     }
     if (filters.domain) {
       const dm = domainOf(filters.domain);
-      const chip = el('span', 'chip active', (dm ? dm.i + ' ' + dm.k : filters.domain) + ' <span class="x">✕</span>');
+      const chip = el('span', 'chip active', escapeHtml(dm ? dm.i + ' ' + dm.k : String(filters.domain)) + ' <span class="x">✕</span>');
       if (dm) { chip.style.background = dm.c; chip.style.color = '#fff'; }
       chip.onclick = () => { filters.domain = null; render(); };
       wrap.appendChild(chip);
@@ -1344,41 +1669,57 @@ const App = (function () {
   }
 
   /* ---- MIT banner (shown above the due banner) ---- */
-  function renderMITBanner() {
-    const old = $('#mitBanner'); if (old) old.remove();
-    const mits = todayMITs(); if (!mits.length) return;
-    const doneN = mits.filter(m => m.done).length; const won = mitDayWon();
-    const banner = el('div', 'banner mitbanner'); banner.id = 'mitBanner';
-    if (won) banner.classList.add('won');
-    const label = won ? '🏆 Day won — all Most Important Tasks done!' :
-      '⭐ Today’s Most Important: ' + mits.map(m => (m.done ? '✓ ' : '') + escapeHtml(m.title || '(untitled)')).join('  ·  ') + '   (' + doneN + '/' + mits.length + ')';
-    banner.appendChild(el('span', 'grow', label));
+  /* ---- due-today banner ---- */
+  function renderStandaloneBanner() {
+    const old = $('#standaloneBanner'); if (old) old.remove();
+    if (!standalone) return;
+    const banner = el('div', 'banner health'); banner.id = 'standaloneBanner';
+    banner.appendChild(el('span', 'grow', '🧪 Demo mode: this page was opened outside Standard Notes, so tasks are saved unencrypted in this browser’s local storage, not in an encrypted note.'));
     const surface = $('#surface'); surface.parentNode.insertBefore(banner, surface);
   }
-  /* ---- due-today banner ---- */
+  // One slim "today" strip: Most Important Tasks and the overdue / due-today count share a
+  // line instead of stacking two banners above the list. Dismissing hides it for this session.
   function renderBanner() {
-    renderMITBanner();
-    const old = $('#dueBanner'); if (old) old.remove();
+    renderStandaloneBanner();
+    renderHealthBanner();
+    const old = $('#todayStrip'); if (old) old.remove();
     if (summaryDismissed) return;
     const today = todayStr();
+    const mits = todayMITs(); const won = mitDayWon();
     const tasks = Object.values(data.tasks).filter(t => !t.archived && !t.done && !isDeferred(t));
     const dueToday = tasks.filter(t => t.due === today).length;
     const overdue = tasks.filter(t => t.due && t.due < today).length;
-    if (!dueToday && !overdue) return;
-    const parts = [];
-    if (overdue) parts.push(overdue + ' overdue');
-    if (dueToday) parts.push(dueToday + ' due today');
-    const banner = el('div', 'banner'); banner.id = 'dueBanner';
-    banner.appendChild(el('span', 'grow', '🔔 ' + escapeHtml(parts.join(' · '))));
-    const view = el('button', 'ghost', 'View');
-    view.onclick = () => { activeSmart = overdue ? 'overdue' : 'today'; SMART.find(s => s.key === activeSmart).apply(); syncFilterControls(); data.ui.view = 'list'; saveOut(); render(); };
-    const x = el('button', 'iconbtn', '✕'); x.onclick = () => { summaryDismissed = true; renderBanner(); };
-    banner.appendChild(view); banner.appendChild(x);
-    const surface = $('#surface'); surface.parentNode.insertBefore(banner, surface);
+    if (!mits.length && !dueToday && !overdue) return;
+    const strip = el('div', 'banner today' + (won ? ' won' : '')); strip.id = 'todayStrip';
+    strip.setAttribute('role', 'status');
+    const add = (text, title) => { const sp = el('span', 'seg-part'); sp.textContent = text; if (title) sp.title = title; strip.appendChild(sp); };
+    const sep = () => { const x = el('span', 'sep'); x.textContent = '·'; strip.appendChild(x); };
+    if (mits.length) {
+      if (won) add('🏆 Day won');
+      else {
+        const doneN = mits.filter(m => m.done).length;
+        const names = mits.map(m => (m.done ? '✓ ' : '') + (m.title || '(untitled)')).join(', ');
+        add('⭐ ' + names + ' (' + doneN + '/' + mits.length + ')', 'Today’s Most Important Tasks');
+      }
+    }
+    if (overdue || dueToday) {
+      if (mits.length) sep();
+      const parts = []; if (overdue) parts.push(overdue + ' overdue'); if (dueToday) parts.push(dueToday + ' due today');
+      add('🔔 ' + parts.join(' · '));
+    }
+    const grow = el('span', 'grow'); strip.appendChild(grow);
+    if (overdue || dueToday) {
+      const view = el('button', 'ghost'); view.textContent = 'View';
+      view.onclick = () => { activeSmart = overdue ? 'overdue' : 'today'; SMART.find(s => s.key === activeSmart).apply(); syncFilterControls(); data.ui.view = 'list'; saveOut(); render(); };
+      strip.appendChild(view);
+    }
+    const x = el('button', 'iconbtn'); x.textContent = '✕'; x.title = 'Hide for now'; x.setAttribute('aria-label', 'Hide today summary');
+    x.onclick = () => { summaryDismissed = true; renderBanner(); };
+    strip.appendChild(x);
+    const surface = $('#surface'); surface.parentNode.insertBefore(strip, surface);
   }
 
   /* ---- custom tag colors ---- */
-  function normalizeHex(c) { return /^#[0-9a-f]{6}$/i.test(c) ? c : '#2f6fed'; }
   function openTagColors() {
     const tags = allTags();
     const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '100';
@@ -1389,9 +1730,9 @@ const App = (function () {
     if (!tags.length) body.appendChild(el('div', 'small', 'No tags yet.'));
     tags.forEach(tag => {
       const row = el('div', 'sub-item');
-      const sw = el('input'); sw.type = 'color'; sw.value = normalizeHex(ensureTagColor(tag));
+      const sw = el('input'); sw.type = 'color'; sw.value = tagColor(tag);
       sw.style.cssText = 'width:42px; height:28px; padding:0;';
-      sw.oninput = () => { data.tags[tag] = sw.value; persist(); render(); };
+      sw.oninput = () => { data.tags[tag] = hexOr(sw.value, '#2f6fed'); persist(); render(); };
       const name = el('span'); name.textContent = tag; name.style.flex = '1';
       row.appendChild(sw); row.appendChild(name); body.appendChild(row);
     });
@@ -1545,13 +1886,13 @@ const App = (function () {
       { label: '↶ Undo', onClick: undo },
       { label: 'Statistics & tools', onClick: openStats },
       { sep: true },
-      { label: '⚙ Customize…', onClick: openCustomize }
+      { label: '⚙ Settings…', onClick: openCustomize }
     ]);
   }
   function openCustomize() {
     const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '120';
-    const box = el('div', 'modal'); box.style.maxWidth = '420px';
-    const head = el('div', 'modal-head', '<strong class="grow">⚙ Customize</strong>');
+    const box = el('div', 'modal'); box.style.maxWidth = '480px';
+    const head = el('div', 'modal-head', '<strong class="grow">⚙ Settings</strong>');
     const close = el('button', 'iconbtn', '✕'); close.onclick = () => ov.remove(); head.appendChild(close);
     const body = el('div', 'modal-body');
     const dsec = el('div', 'field'); dsec.appendChild(el('label', null, 'Card density'));
@@ -1573,9 +1914,91 @@ const App = (function () {
       lab.appendChild(cbx); lab.appendChild(document.createTextNode(' ' + v.label)); vsec.appendChild(lab);
     });
     body.appendChild(vsec);
+    buildBoardSettings(body);
     const foot = el('div', 'modal-foot'); foot.appendChild(el('span', 'grow', '')); const done = el('button', 'primary', 'Done'); done.onclick = () => ov.remove(); foot.appendChild(done);
     box.appendChild(head); box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
     ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
+  }
+  /* ---- board settings (Customize): the behaviour that used to be hidden in list names ---- */
+  function buildBoardSettings(body) {
+    const st = data.settings;
+    const save = () => { persist(); render(); };
+    const section = (title, hint) => {
+      const f = el('div', 'field'); const l = el('label'); l.textContent = title; f.appendChild(l);
+      if (hint) { const h = el('div', 'small'); h.textContent = hint; h.style.cssText = 'color:var(--muted); margin-bottom:6px;'; f.appendChild(h); }
+      body.appendChild(f); return f;
+    };
+    const check = (parent, label, get, set) => {
+      const lab = el('label', 'opt-check'); const c = el('input'); c.type = 'checkbox'; c.checked = !!get();
+      c.onchange = () => { set(c.checked); save(); };
+      lab.appendChild(c); lab.appendChild(document.createTextNode(' ' + label)); parent.appendChild(lab); return c;
+    };
+    const colSelect = (value, noneLabel, onChange) => {
+      const sel = el('select'); sel.style.width = '100%';
+      if (noneLabel) { const o = el('option'); o.value = ''; o.textContent = noneLabel; sel.appendChild(o); }
+      data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+      sel.value = value || ''; sel.onchange = () => { onChange(sel.value || null); save(); };
+      return sel;
+    };
+    const row = (parent, label, control) => {
+      const r = el('div'); r.style.cssText = 'display:flex; align-items:center; gap:8px; margin:4px 0;';
+      const l = el('span', 'small'); l.textContent = label; l.style.cssText = 'flex:1 1 50%; min-width:0; overflow:hidden; text-overflow:ellipsis;';
+      control.style.flex = '1 1 50%'; r.appendChild(l); r.appendChild(control); parent.appendChild(r); return r;
+    };
+
+    // Completing tasks
+    const comp = section('Completing tasks');
+    check(comp, 'Ask before marking a task complete', () => st.confirmComplete, v => { st.confirmComplete = v; });
+    row(comp, 'Move completed tasks to', colSelect(st.doneColumn, 'Don’t move them', v => { st.doneColumn = v; }));
+    const per = el('div', 'small'); per.textContent = 'When a task is completed in…'; per.style.cssText = 'margin:8px 0 2px; color:var(--muted);'; comp.appendChild(per);
+    data.columns.forEach(c => {
+      const sel = el('select');
+      [['done', 'Mark it done'], ['delete', 'Delete it (asks first)']].forEach(([v, t]) => { const o = el('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
+      sel.value = c.onComplete === 'delete' ? 'delete' : 'done';
+      sel.onchange = () => { c.onComplete = sel.value; save(); };
+      row(comp, c.name, sel);
+    });
+
+    // New tasks
+    const nt = section('New tasks', 'Applies to the + buttons, the quick-add box, the calendar and the command palette. Tasks added inside a list stay in that list.');
+    row(nt, 'Add them to', colSelect(st.defaultColumn, 'The first list', v => { st.defaultColumn = v; }));
+    check(nt, 'Make new tasks from the + button due today', () => st.newTaskDueToday, v => { st.newTaskDueToday = v; });
+
+    // Life areas
+    const la = section('Life areas', 'Optional labels for balancing parts of your life. The “Life area” field only appears in the task editor once you add one.');
+    const list = el('div'); la.appendChild(list);
+    const draw = () => {
+      list.innerHTML = '';
+      st.domains.forEach((d, i) => {
+        const r = el('div'); r.style.cssText = 'display:flex; align-items:center; gap:6px; margin:4px 0;';
+        const ic = el('input'); ic.type = 'text'; ic.value = d.i; ic.maxLength = 8; ic.placeholder = '🙂'; ic.setAttribute('aria-label', 'Icon'); ic.style.cssText = 'width:52px; flex:0 0 auto; text-align:center;';
+        const nm = el('input'); nm.type = 'text'; nm.value = d.k; nm.maxLength = 40; nm.setAttribute('aria-label', 'Name'); nm.style.flex = '1 1 auto';
+        const co = el('input'); co.type = 'color'; co.value = hexOr(d.c, '#8b949e'); co.setAttribute('aria-label', 'Colour'); co.style.cssText = 'width:36px; height:30px; padding:0; flex:0 0 auto;';
+        const rm = el('button', 'iconbtn'); rm.textContent = '✕'; rm.title = 'Remove'; rm.setAttribute('aria-label', 'Remove ' + d.k);
+        ic.onchange = () => { d.i = ic.value.trim().slice(0, 16); save(); };
+        co.oninput = () => { d.c = hexOr(co.value, '#8b949e'); save(); };
+        nm.onchange = () => {
+          const v = nm.value.trim().slice(0, 40);
+          if (!v || st.domains.some((x, j) => j !== i && x.k === v)) { nm.value = d.k; return; }   // no blanks or duplicates
+          Object.values(data.tasks).forEach(t => { if (t.domain === d.k) t.domain = v; });           // rename carries over
+          d.k = v; save();
+        };
+        rm.onclick = () => {
+          const used = Object.values(data.tasks).filter(t => t.domain === d.k).length;
+          const go = () => { Object.values(data.tasks).forEach(t => { if (t.domain === d.k) t.domain = null; }); st.domains.splice(i, 1); save(); draw(); };
+          if (used) uiConfirm('Remove “' + d.k + '”? It’s cleared from ' + used + ' task' + (used === 1 ? '' : 's') + '.', go); else go();
+        };
+        r.appendChild(ic); r.appendChild(nm); r.appendChild(co); r.appendChild(rm); list.appendChild(r);
+      });
+    };
+    draw();
+    const addBtn = el('button', 'ghost'); addBtn.textContent = '+ Add a life area'; addBtn.style.marginTop = '4px';
+    addBtn.onclick = () => {
+      let n = 1, name = 'New area'; while (st.domains.some(x => x.k === name)) name = 'New area ' + (++n);
+      st.domains.push({ k: name, c: TAG_COLORS[st.domains.length % TAG_COLORS.length], i: '' }); save(); draw();
+      const inputs = list.querySelectorAll('input[type=text]'); const last = inputs[inputs.length - 1]; if (last) { last.focus(); last.select(); }
+    };
+    la.appendChild(addBtn);
   }
   function emptyState(emoji, title, msg, ctaLabel, ctaFn) {
     const box = el('div', 'emptybox');
@@ -1589,6 +2012,10 @@ const App = (function () {
 
   function render() {
     if (!data) return;
+    rx = buildIndex();
+    try { renderInner(); } finally { rx = null; }
+  }
+  function renderInner() {
     renderViewSwitcher();
     // "Hide done" switch is only meaningful in List view
     const hdw = $('#hideDoneWrap');
@@ -1630,7 +2057,7 @@ const App = (function () {
     const wrap = $('#tagFilter'); wrap.innerHTML = '';
     const tags = allTags();
     tags.forEach(tag => {
-      const c = ensureTagColor(tag);
+      const c = tagColor(tag);
       const chip = el('span', 'chip' + (filters.tags.has(tag) ? ' active' : ''),
         '<span style="width:8px;height:8px;border-radius:50%;background:'+c+';display:inline-block"></span>' + escapeHtml(tag));
       if (filters.tags.has(tag)) { chip.style.background = c; chip.style.color = '#fff'; }
@@ -1698,11 +2125,11 @@ const App = (function () {
         persist(); render();
       });
     };
-    const swatch = el('input'); swatch.type = 'color'; swatch.value = col.color || '#c8ccd1';
+    const swatch = el('input'); swatch.type = 'color'; swatch.value = colColor(col) || '#c8ccd1';
     swatch.title = 'List color';
     swatch.style.cssText = 'width:22px; height:20px; padding:0; border:1px solid var(--border); border-radius:4px; flex:0 0 auto; cursor:pointer;';
     swatch.onclick = (e) => e.stopPropagation();
-    swatch.oninput = (e) => { col.color = e.target.value; persist(); render(); };
+    swatch.oninput = (e) => { const v = hexOr(e.target.value, null); if (v) col.color = v; else delete col.color; persist(); render(); };
     head.appendChild(title); head.appendChild(num); head.appendChild(swatch);
     if (col.color) {
       const clr = el('button', 'iconbtn', '⊘'); clr.title = 'Clear list color';
@@ -1710,7 +2137,7 @@ const App = (function () {
       head.appendChild(clr);
     }
     head.appendChild(left); head.appendChild(right); head.appendChild(pencil); head.appendChild(del);
-    if (col.color) wrap.style.borderTop = '3px solid ' + col.color;
+    if (colColor(col)) wrap.style.borderTop = '3px solid ' + colColor(col);
     wrap.appendChild(head);
 
     const body = el('div', 'column-body'); body.dataset.col = col.id;
@@ -1780,7 +2207,8 @@ const App = (function () {
       data.columns.forEach(col => {
         const ids = (data.order[col.id]||[]).filter(tid => data.tasks[tid] && visible.has(tid) && isRoot(data.tasks[tid]));
         if (!ids.length) return;
-        const dot = col.color ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + col.color + ';margin-right:6px;vertical-align:middle;"></span>' : '';
+        const cc = colColor(col);
+        const dot = cc ? '<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:' + cc + ';margin-right:6px;vertical-align:middle;"></span>' : '';
         wrap.appendChild(el('div','list-group-title', dot + escapeHtml(col.name) + ' · ' + ids.length));
         arrangePinned(ids.map(tid => data.tasks[tid])).forEach(t => renderNode(t, 0));
       });
@@ -1922,7 +2350,7 @@ const App = (function () {
       const head = el('div', 'modal-head', '<strong style="flex:1">Weekly review · ' + (reviewIdx + 1) + ' of ' + reviewQueue.length + '</strong>');
       const x = el('button', 'iconbtn', '✕'); x.onclick = endReview; head.appendChild(x); box.appendChild(head);
       const body = el('div', 'modal-body');
-      body.appendChild(el('div', 'small', item.kind === 'overdue' ? ('Overdue — was due ' + t.due) : 'Has no due date'));
+      body.appendChild(el('div', 'small', item.kind === 'overdue' ? escapeHtml('Overdue — was due ' + t.due) : 'Has no due date'));
       body.appendChild(el('div', null, '<strong>' + escapeHtml(t.title || '(untitled)') + '</strong>'));
       const acts = el('div'); acts.style.cssText = 'display:flex; gap:8px; flex-wrap:wrap; margin-top:14px;';
       const adv = () => { persist(); reviewIdx++; reviewStep(); };
@@ -1985,7 +2413,7 @@ const App = (function () {
     const items = []; const ql = q.trim().toLowerCase();
     if (q.trim()) { const p = parseQuickAdd(q);
       const sub = [p.due ? ('due ' + p.due + (p.dueTime ? (' ' + p.dueTime) : '')) : '', p.priority ? ('P' + p.priority) : '', p.recur !== 'none' ? p.recur : '', p.tags.length ? ('#' + p.tags.join(' #')) : ''].filter(Boolean).join(' · ');
-      items.push({ ic: '➕', main: 'Add task: ' + (p.title || '(untitled)'), sub: sub, run: () => { const t = newTask(p.title, data.columns[0].id); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor); persist(); render(); openModal(t.id); } });
+      items.push({ ic: '➕', main: 'Add task: ' + (p.title || '(untitled)'), sub: sub, run: () => { const t = newTask(p.title, defaultColumnId()); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor); persist(); render(); openModal(t.id); } });
     }
     [['list','List'],['kanban','Board'],['agenda','Agenda'],['calendar','Calendar'],['matrix','Matrix'],['focus','Focus'],['plan','Plan']].forEach(([v,label]) => {
       if (!ql || label.toLowerCase().includes(ql) || ('go to ' + label).toLowerCase().includes(ql)) items.push({ ic: '▸', main: 'Go to ' + label, run: () => { data.ui.view = v; saveOut(); render(); } });
@@ -2036,9 +2464,9 @@ const App = (function () {
     });
   }
   function useTemplate(tpl) {
-    const byName = {}; data.columns.forEach(c => byName[(c.name || '').toLowerCase()] = c.id);
-    (tpl.cols || []).forEach(tc => { if (!byName[(tc.name || '').toLowerCase()]) { const c = { id: id(), name: tc.name }; if (tc.color) c.color = tc.color; data.columns.push(c); data.order[c.id] = []; byName[(c.name || '').toLowerCase()] = c.id; } });
-    const titleToId = {};
+    const byName = Object.create(null); data.columns.forEach(c => byName[(c.name || '').toLowerCase()] = c.id);
+    (tpl.cols || []).forEach(tc => { if (!byName[(tc.name || '').toLowerCase()]) { const c = { id: id(), name: tc.name }; const tcc = hexOr(tc.color, null); if (tcc) c.color = tcc; data.columns.push(c); data.order[c.id] = []; byName[(c.name || '').toLowerCase()] = c.id; } });
+    const titleToId = Object.create(null);
     (tpl.tasks || []).forEach(tt => {
       const colId = byName[(tt.col || '').toLowerCase()] || data.columns[0].id;
       const t = newTask(tt.title, colId); t.notes = tt.notes || ''; t.priority = tt.priority || 0; t.tags = (tt.tags || []).slice(); t.tags.forEach(ensureTagColor);
@@ -2099,13 +2527,13 @@ const App = (function () {
       const cell = el('div', 'cv-cell' + (dstr === today ? ' caltoday' : ''));
       const top = el('div', 'cv-top'); top.appendChild(el('div', 'cv-num', String(dnum)));
       const add = el('div', 'cv-add', '+'); add.title = 'Add a task due ' + dstr;
-      add.onclick = () => { const t = newTask('', data.columns[0].id); t.due = dstr; persist(); render(); openModal(t.id); };
+      add.onclick = () => { const t = newTask('', defaultColumnId()); t.due = dstr; persist(); render(); openModal(t.id); };
       top.appendChild(add); cell.appendChild(top);
       const items = (byDate[dstr] || []).slice().sort((a, b) => b.priority - a.priority);
       items.slice(0, 4).forEach(t => {
         const chip = el('div', 'cv-chip' + (t.done ? ' done' : ''), escapeHtml(t.title || '(untitled)'));
         const col = data.columns.find(c => c.id === columnOf(t.id));
-        chip.style.borderLeftColor = (t.priority > 0 ? PRIO[t.priority].color : (col && col.color ? col.color : 'var(--accent)'));
+        chip.style.borderLeftColor = (t.priority > 0 ? PRIO[t.priority].color : (colColor(col) || 'var(--accent)'));
         chip.onclick = () => openModal(t.id); cell.appendChild(chip);
       });
       if (items.length > 4) cell.appendChild(el('div', 'cv-more', '+' + (items.length - 4) + ' more'));
@@ -2129,7 +2557,7 @@ const App = (function () {
     const archived = Object.values(data.tasks).filter(t => t.archived).length;
     const prioLabels = ['None', 'Low', 'Medium', 'High'];
     const byP = [0, 0, 0, 0]; all.forEach(t => { if (!t.done) byP[t.priority]++; });
-    const tagCount = {}; all.forEach(t => { if (!t.done) t.tags.forEach(tg => tagCount[tg] = (tagCount[tg] || 0) + 1); });
+    const tagCount = Object.create(null); all.forEach(t => { if (!t.done) t.tags.forEach(tg => tagCount[tg] = (tagCount[tg] || 0) + 1); });
     const card = (n, l) => '<div class="stat-card"><div class="stat-num">' + n + '</div><div class="stat-label">' + l + '</div></div>';
     let html = '<div class="stat-grid">' +
       card(active, 'Active') + card(done, 'Completed') +
@@ -2147,11 +2575,13 @@ const App = (function () {
       html += '<div style="margin-top:14px;"><div class="stat-label" style="margin-bottom:4px;">Active by tag</div>';
       tags.forEach(([tg, n]) => {
         html += '<div class="bar-row"><span style="width:90px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(tg) +
-          '</span><span class="bar-track"><span class="bar-fill" style="width:' + (n / maxT * 100) + '%; background:' + ensureTagColor(tg) + '"></span></span><span>' + n + '</span></div>';
+          '</span><span class="bar-track"><span class="bar-fill" style="width:' + (n / maxT * 100) + '%; background:' + tagColor(tg) + '"></span></span><span>' + n + '</span></div>';
       });
       html += '</div>';
     }
     if (archived) html += '<div class="small" style="margin-top:12px;">' + archived + ' archived task' + (archived === 1 ? '' : 's') + ' (not counted above).</div>';
+    const nb = noteBytes(), ab = attachmentBytes(), big = nb >= NOTE_WARN_BYTES;
+    html += '<div class="small" style="margin-top:8px;' + (big ? 'color:var(--danger); font-weight:600;' : '') + '">Note size: ' + humanBytes(nb) + (ab ? ' · attachments ' + humanBytes(ab) : '') + (big ? ' — large; removing big attachments will keep sync fast.' : '') + '</div>';
     html += '<div style="margin-top:16px; display:flex; gap:8px; flex-wrap:wrap;">' +
       '<button class="ghost" id="stats_archiveDone">Archive all completed (' + done + ')</button>' +
       '<button class="ghost" id="stats_tagColors">Tag colors…</button>' +
@@ -2213,6 +2643,8 @@ const App = (function () {
     level = level || 0;
     const card = el('div', 'card' + (t.done ? ' completed' : '') + (selectMode && selectedIds.has(t.id) ? ' selected' : '') + (level > 0 ? ' child' : ''));
     card.dataset.id = t.id;
+    card.setAttribute('role', 'button'); card.tabIndex = 0;
+    card.setAttribute('aria-label', (t.title || 'Untitled task') + (t.due ? ' · due ' + fmtDue(t.due) : '') + (t.done ? ' · done' : '') + ' · press Enter to open');
     if (level > 0) card.style.marginLeft = (level * 22) + 'px';
     card.draggable = true;
     card.addEventListener('dragstart', (e) => { e.dataTransfer.setData('text/task', t.id); card.classList.add('dragging'); });
@@ -2237,8 +2669,12 @@ const App = (function () {
       row.appendChild(car);
     }
     const cb = el('div', 'checkbox' + (t.done ? ' done' : ''));
-    cb.onclick = (e) => { e.stopPropagation(); onComplete(t, () => { toggleDone(t); persist(); render(); }); };
-    if (t.domain) { const dm = domainOf(t.domain); if (dm) { const dot = el('span'); dot.title = 'Domain: ' + dm.k; dot.style.cssText = 'flex:0 0 auto; width:8px; height:8px; border-radius:50%; background:' + dm.c + ';'; row.appendChild(dot); } }
+    cb.setAttribute('role', 'checkbox'); cb.setAttribute('aria-checked', t.done ? 'true' : 'false'); cb.tabIndex = 0;
+    cb.setAttribute('aria-label', (t.done ? 'Mark not done: ' : 'Mark done: ') + (t.title || 'untitled'));
+    const toggleCb = () => onComplete(t, () => { toggleDone(t); persist(); render(); });
+    cb.onclick = (e) => { e.stopPropagation(); toggleCb(); };
+    cb.onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); toggleCb(); } };
+    if (t.domain) { const dm = domainOf(t.domain); if (dm) { const dot = el('span'); dot.title = 'Life area: ' + dm.k; dot.style.cssText = 'flex:0 0 auto; width:8px; height:8px; border-radius:50%;'; dot.style.background = hexOr(dm.c, '#8b949e'); row.appendChild(dot); } }
     const title = el('div', 'card-title'); title.textContent = t.title || '(untitled)';
     title.title = 'Double-click to rename';
     title.ondblclick = (e) => { e.stopPropagation(); startInlineRename(t, title); };
@@ -2290,7 +2726,7 @@ const App = (function () {
     if (t.related && t.related.length) mini.push('🔗 ' + t.related.length);
     if (mini.length) { const m = el('span', 'badge mini'); m.innerHTML = mini.join('<span class="mini-sep"></span>'); m.title = 'Task details'; mr.appendChild(m); }
     t.tags.forEach(tag => {
-      const c = ensureTagColor(tag); const b = el('span', 'badge tag'); b.style.borderColor = c;
+      const c = tagColor(tag); const b = el('span', 'badge tag'); b.style.borderColor = c;
       b.innerHTML = '<span style="width:7px;height:7px;border-radius:50%;background:' + c + ';display:inline-block"></span>' + escapeHtml(tag);
       mr.appendChild(b);
     });
@@ -2298,11 +2734,13 @@ const App = (function () {
 
     if (!selectMode && (data.ui.view === 'list' || data.ui.view === 'agenda')) attachSwipe(card, t, guard);
 
-    card.addEventListener('click', () => {
-      if (guard.suppress) { guard.suppress = false; return; }
+    const activate = () => {
       if (selectMode) { selectedIds.has(t.id) ? selectedIds.delete(t.id) : selectedIds.add(t.id); render(); }
       else openModal(t.id);
-    });
+    };
+    card.addEventListener('click', () => { if (guard.suppress) { guard.suppress = false; return; } activate(); });
+    // keyboard: open with Enter/Space only when the card itself is focused (not a child control)
+    card.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === card) { e.preventDefault(); activate(); } });
     return card;
   }
 
@@ -2335,7 +2773,7 @@ const App = (function () {
   function completedTitlesSince(dstr) { return Object.values(data.tasks).filter(t => t.done && t.completedAt && t.completedAt.slice(0, 10) >= dstr).sort((a, b) => b.completedAt.localeCompare(a.completedAt)); }
   function shipStreak() { const today = todayStr(); let s = 0, d = today; while (true) { const has = doneOn(d) > 0 || winsFor(d).length > 0; if (has) s++; else if (d !== today) break; d = addDays(d, -1); if (d < '2000-01-01') break; } return s; }
   // --- life balance ---
-  function domainStats(days) { const today = todayStr(); const cut = addDays(today, -(days - 1)); const res = {}; DOMAINS.forEach(dm => res[dm.k] = { open:0, openMin:0, doneWk:0, lastActive:null, used:false });
+  function domainStats(days) { const today = todayStr(); const cut = addDays(today, -(days - 1)); const res = Object.create(null); domains().forEach(dm => res[dm.k] = { open:0, openMin:0, doneWk:0, lastActive:null, used:false });
     Object.values(data.tasks).forEach(t => { if (t.archived || !t.domain || !res[t.domain]) return; const r = res[t.domain]; r.used = true;
       if (!t.done) { r.open++; r.openMin += (t.estimate || 0); }
       if (t.done && t.completedAt && t.completedAt.slice(0, 10) >= cut) r.doneWk++;
@@ -2375,6 +2813,7 @@ const App = (function () {
     if (!t) return;
     $('#m_title').value = t.title;
     $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
+    $('#m_done').setAttribute('aria-checked', t.done ? 'true' : 'false');
     $('#m_due').value = t.due || '';
     $('#m_dueTime').value = t.dueTime || '';
     $('#m_priority').value = String(t.priority);
@@ -2383,7 +2822,11 @@ const App = (function () {
     $('#m_recurBasis').value = t.recurBasis || 'due';
     $('#m_start').value = t.start || '';
     $('#m_estimate').value = (t.estimate == null ? '' : t.estimate);
-    const dsel = $('#m_domain'); dsel.innerHTML = '<option value="">— none —</option>' + DOMAINS.map(d => '<option value="' + d.k + '">' + d.i + ' ' + d.k + '</option>').join(''); dsel.value = t.domain || '';
+    const dsel = $('#m_domain'); dsel.innerHTML = '<option value="">— none —</option>';
+    domains().forEach(d => { const o = document.createElement('option'); o.value = d.k; o.textContent = (d.i ? d.i + ' ' : '') + d.k; dsel.appendChild(o); });
+    if (t.domain && !domainOf(t.domain)) { const o = document.createElement('option'); o.value = t.domain; o.textContent = t.domain + ' (removed)'; dsel.appendChild(o); }
+    dsel.value = t.domain || '';
+    $('#m_domainField').hidden = !domains().length && !t.domain;
     $('#m_impact').value = String(t.impact || 0);
     $('#m_energy').value = t.energy || '';
     $('#m_actual').value = (t.actualMin == null ? '' : t.actualMin);
@@ -2462,7 +2905,7 @@ const App = (function () {
   function renderModalTags(t) {
     const box = $('#m_tags'); box.innerHTML = '';
     t.tags.forEach(tag => {
-      const c = ensureTagColor(tag);
+      const c = tagColor(tag);
       const chip = el('span','chip','<span style="width:8px;height:8px;border-radius:50%;background:'+c+';display:inline-block"></span>'+escapeHtml(tag)+' <span class="x">✕</span>');
       chip.querySelector('.x').onclick = () => { t.tags = t.tags.filter(x=>x!==tag); persist(); renderModalTags(t); };
       box.appendChild(chip);
@@ -2533,8 +2976,15 @@ const App = (function () {
   const IMG_TARGET = 420 * 1024;         // compress images down toward ~420 KB
   const IMG_MAXDIM = 1600;
   function humanSize(b) { b = b || 0; return b < 1024 ? b + ' B' : b < 1048576 ? (b / 1024).toFixed(0) + ' KB' : (b / 1048576).toFixed(1) + ' MB'; }
-  function isCleanB64(s) { return typeof s === 'string' && /^[A-Za-z0-9+/=\s]*$/.test(s) && s.length > 0; }
-  function fileDataUri(f) { return 'data:' + (/^[\w.+-]+\/[\w.+-]+$/.test(f.type || '') ? f.type : 'application/octet-stream') + ';base64,' + f.data; }
+  // Inline previews use the real type, and only for the raster image types in INLINE_IMG.
+  function fileDataUri(f) { return 'data:' + (INLINE_IMG.includes(f.type) ? f.type : 'application/octet-stream') + ';base64,' + String(f.data).replace(/\s+/g, ''); }
+  // Downloads are always application/octet-stream, so the browser saves the file instead of
+  // rendering it (e.g. an attached .html or .svg can never open inside this page's context).
+  function fileDownloadUri(f) { return 'data:application/octet-stream;base64,' + String(f.data).replace(/\s+/g, ''); }
+  function safeFileName(n) {
+    const s = String(n || 'file').replace(/[\u0000-\u001f\u007f<>:"\/\\|?*]+/g, '_').replace(/^[.\s]+/, '').slice(0, 120);
+    return s || 'file';
+  }
   function readAsB64(file, cb) {
     const r = new FileReader();
     r.onload = () => cb({ ok: true, data: String(r.result).split(',')[1] || '', type: file.type || 'application/octet-stream', size: file.size });
@@ -2573,7 +3023,7 @@ const App = (function () {
         if (!res.ok) { done(res.reason || 'Skipped a file.'); return; }
         if (res.size > FILE_CAP && !isImg) { done('“' + file.name + '” is ' + humanSize(res.size) + ' — over the 1 MB limit. Add it as a link instead.'); return; }
         t.files = t.files || [];
-        t.files.push({ id: id(), name: String(file.name || 'file').slice(0, 120), type: res.type, size: res.size, data: res.data });
+        t.files.push({ id: id(), name: safeFileName(file.name), type: MIME_RE.test(res.type || '') ? res.type : 'application/octet-stream', size: res.size, data: res.data });
         done(res.size > FILE_CAP ? null : '');
       };
       if (isImg) compressImage(file, store); else readAsB64(file, store);
@@ -2586,7 +3036,7 @@ const App = (function () {
     const wrap = el('div'); wrap.style.cssText = 'max-width:100%; max-height:100%; display:flex; flex-direction:column; gap:8px; align-items:center;';
     const im = el('img'); im.src = fileDataUri(f); im.style.cssText = 'max-width:100%; max-height:80vh; border-radius:8px; box-shadow:var(--shadow);';
     const bar = el('div'); bar.style.cssText = 'display:flex; gap:8px;';
-    const dl = el('a', 'ghost'); dl.textContent = '⤓ Download'; dl.href = fileDataUri(f); dl.download = f.name || 'image'; dl.style.cssText = 'padding:6px 12px; border:1px solid var(--border); border-radius:6px; color:var(--fg);';
+    const dl = el('a', 'ghost'); dl.textContent = '⤓ Download'; dl.href = fileDownloadUri(f); dl.download = safeFileName(f.name || 'image'); dl.style.cssText = 'padding:6px 12px; border:1px solid var(--border); border-radius:6px; color:var(--fg);';
     const cl = el('button', 'ghost', 'Close'); cl.onclick = () => ov.remove();
     bar.appendChild(dl); bar.appendChild(cl); wrap.appendChild(im); wrap.appendChild(bar); ov.appendChild(wrap);
     ov.addEventListener('mousedown', e => { if (e.target === ov) ov.remove(); });
@@ -2608,7 +3058,7 @@ const App = (function () {
       meta.appendChild(el('div', 'file-sz', humanSize(f.size)));
       row.appendChild(meta);
       if (isCleanB64(f.data)) {
-        const dl = el('a', 'iconbtn'); dl.textContent = '⤓'; dl.title = 'Download'; dl.href = fileDataUri(f); dl.download = f.name || 'file';
+        const dl = el('a', 'iconbtn'); dl.textContent = '⤓'; dl.title = 'Download'; dl.href = fileDownloadUri(f); dl.download = safeFileName(f.name);
         row.appendChild(dl);
       }
       const x = el('button', 'iconbtn', '✕'); x.title = 'Remove attachment';
@@ -2629,7 +3079,7 @@ const App = (function () {
     // inline quick-add
     const quickAddNow = () => {
       const inp = $('#quickAdd'); if (!inp.value.trim()) return;
-      const p = parseQuickAdd(inp.value); const col = data.columns[0].id;
+      const p = parseQuickAdd(inp.value); const col = defaultColumnId();
       const t = newTask(p.title, col); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor);
       persist(); inp.value = ''; render(); const q = $('#quickAdd'); if (q) q.focus();
     };
@@ -2746,10 +3196,9 @@ const App = (function () {
       else if (e.key === '7') { data.ui.view = 'plan'; saveOut(); render(); }
     });
     const openNewTask = () => {
-      // Default new tasks to the "Urgent" list and due today (both overridable in the editor).
-      const urgent = data.columns.find(c => /^\s*urgent\s*$/i.test(c.name || ''));
-      const t = newTask('', (urgent || data.columns[0]).id);
-      t.due = todayStr();
+      // New tasks go to the board's default list, due today only if that setting is on.
+      const t = newTask('', defaultColumnId());
+      if (data.settings.newTaskDueToday) t.due = todayStr();
       persist(); render(); openModal(t.id);
     };
     $('#addTaskBtn').onclick = openNewTask;
@@ -2759,17 +3208,20 @@ const App = (function () {
     $('#m_save').onclick = closeModal;
     $('#m_moreToggle').onclick = () => setMore($('#m_more').hidden);
     $('#overlay').addEventListener('mousedown', (e) => { if (e.target.id === 'overlay') closeModal(); });
-    $('#m_done').onclick = () => {
+    const toggleModalDone = () => {
       const t = data.tasks[editingId]; if (!t) return;
       onComplete(t, () => {
         toggleDone(t);
         $('#m_done').className = 'checkbox' + (t.done ? ' done' : '');
+        $('#m_done').setAttribute('aria-checked', t.done ? 'true' : 'false');
         // keep the List/Column dropdown in sync with any auto-move to Done,
         // otherwise closing the modal would move the task back.
         $('#m_column').value = columnOf(editingId) || $('#m_column').value;
         persist();
       });
     };
+    $('#m_done').onclick = toggleModalDone;
+    $('#m_done').onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); toggleModalDone(); } };
     $('#m_title').onkeydown = (e) => { if (e.key === 'Enter') closeModal(); };
     ['m_due','m_dueTime','m_priority','m_notes','m_column'].forEach(idn => { const e=document.getElementById(idn); e.onchange = commitModal; });
     $('#m_subInput').onkeydown = (e) => {
@@ -2792,17 +3244,19 @@ const App = (function () {
       const t = data.tasks[editingId]; if (!t) return;
       attachFiles(t, e.target.files); e.target.value = '';
     };
-    $('#m_delete').onclick = () => {
-      if (!editingId) return;
-      const tid = editingId;
-      uiConfirm('Delete this task?', () => {
-        deleteTask(tid); editingId=null; $('#overlay').classList.remove('open'); persist(); render();
-      });
-    };
-    $('#m_complete').onclick = () => {
+    // Less-used, destructive actions live behind ⋯ so they aren't next to everyday buttons.
+    $('#m_menu').onclick = (e) => {
+      e.stopPropagation();
       const t = data.tasks[editingId]; if (!t) return;
-      if (t.done) { closeModal(); return; }   // already complete
-      onComplete(t, () => { toggleDone(t); editingId = null; $('#overlay').classList.remove('open'); persist(); render(); });
+      openMenu($('#m_menu'), [
+        { label: t.archived ? 'Unarchive task' : 'Archive task', onClick: () => {
+            commitModal(); t.archived = !t.archived; editingId = null; $('#overlay').classList.remove('open'); persist(); render(); } },
+        { sep: true },
+        { label: 'Delete task…', onClick: () => {
+            const tid = editingId;
+            uiConfirm('Delete this task?', () => { deleteTask(tid); editingId = null; $('#overlay').classList.remove('open'); persist(); render(); });
+          } }
+      ]);
     };
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && $('#overlay').classList.contains('open')) closeModal(); });
     // flush on unload
@@ -2853,16 +3307,23 @@ const App = (function () {
   // javascript:, data:, file:, etc. — even if a link was hand-edited into the note JSON.
   function safeUrl(u){
     const s = String(u == null ? '' : u).trim();
-    return /^(https?:|mailto:)/i.test(s) ? s : null;
+    if (/[\u0000-\u001f\u007f]/.test(s)) return null;           // no control characters
+    return /^(https?:\/\/|mailto:)/i.test(s) ? s : null;
   }
 
   return {
     start() {
+      const bf = document.getElementById('bootFail'); if (bf) bf.remove();
       wire();
       SNBridge.init({
         debounceSave: 250,
         onNote: (text) => { standalone = false; load(text); },
-        onStandalone: () => { standalone = true; load(''); }
+        onStandalone: () => { standalone = true; load(''); },
+        onUnregistered: () => {
+          const surface = $('#surface'); if (!surface) return;
+          surface.innerHTML = '';
+          surface.appendChild(el('div', 'empty', 'Waiting for Standard Notes… This editor only runs inside Standard Notes (or opened directly as a demo).'));
+        }
       });
     },
     _test: { todayMITs, mitDayWon, setMIT, doneOn, shipStreak, domainStats, daysSince, calibration, throughputWeeks, quickWins, stickyTasks, matchesFilters, addWin, winsFor, todayStr, addDays, filters, _set: (d) => { data = d; } }
