@@ -3,9 +3,9 @@
   "name": "Tasks",
   "content_type": "SN|Component",
   "area": "editor-editor",
-  "version": "1.27.0",
+  "version": "1.27.1",
   "description": "A Todoist-style task manager for Standard Notes: List / Board / Agenda / Calendar / Matrix / Focus / Plan views, due dates, priorities, tags, notes, true nested subtasks (real tasks you can indent, collapse, and roll up), links, file attachments (auto-compressed images + files embedded in the encrypted note), recurrence, dependencies, Most Important Tasks, and a 'Right now' time+energy filter. All data is stored inside the note and protected by Standard Notes' end-to-end encryption.",
-  "url": "https://justice2425.github.io/sn-tasks/releases/1.27.0/index.html",
-  "download_url": "https://justice2425.github.io/sn-tasks/releases/1.27.0/index.html",
+  "url": "https://justice2425.github.io/sn-tasks/index.html",
+  "download_url": "https://github.com/justice2425/sn-tasks/archive/refs/tags/v1.27.1.zip",
   "latest_url": "https://justice2425.github.io/sn-tasks/ext.json"
 }
