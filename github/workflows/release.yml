@@ -1,0 +1,130 @@
+# Versioned releases for the Tasks Standard Notes extension.
+#
+# How to cut a release: bump "version" in BOTH ext.json and package.json, and point
+# ext.json's download_url at the matching tag, then commit to main. Example for 1.27.1:
+#   "version": "1.27.1"
+#   "download_url": "https://github.com/justice2425/sn-tasks/archive/refs/tags/v1.27.1.zip"
+# This workflow then checks the files and creates the git tag v1.27.1 plus a GitHub Release.
+# Standard Notes desktop polls latest_url (ext.json), sees the new version, and installs the
+# zip GitHub auto-generates for that tag. Web/mobile keep loading index.html from GitHub Pages.
+#
+# Security: turn on Settings → Releases → "Enable release immutability" so a published
+# release's tag can't be moved or deleted (i.e. v1.27.1 always means the same code).
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [ext.json, package.json, index.html, .github/workflows/release.yml]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      # Pinned to a full commit SHA (not a movable tag) so a compromised action can't be swapped in.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0 # tags are needed to compare against the last release
+          persist-credentials: false # don't leave the token in .git/config
+
+      - name: Validate versions, download_url and CSP hash
+        id: validate
+        shell: python
+        run: |
+          import base64, hashlib, json, os, re, subprocess, sys
+
+          errors = []
+          ext = json.load(open("ext.json", encoding="utf-8"))
+          pkg = json.load(open("package.json", encoding="utf-8"))
+          version = ext.get("version", "")
+          repo = os.environ["GITHUB_REPOSITORY"]
+
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              errors.append(f'ext.json version "{version}" is not MAJOR.MINOR.PATCH')
+          if pkg.get("version") != version:
+              errors.append(f'package.json version "{pkg.get("version")}" != ext.json version "{version}" '
+                            "(the Standard Notes desktop app reads the version from package.json inside the zip)")
+          want = f"https://github.com/{repo}/archive/refs/tags/v{version}.zip"
+          if ext.get("download_url") != want:
+              errors.append(f'ext.json download_url should be "{want}", found "{ext.get("download_url")}"')
+          if not ext.get("latest_url"):
+              errors.append("ext.json latest_url is missing (desktop needs it to detect updates)")
+
+          # The page's CSP allows exactly one inline script, by hash. A mismatch means the
+          # extension would load but none of its code would run, so never release that.
+          html = open("index.html", encoding="utf-8").read()
+          scripts = re.findall(r"<script\b[^>]*>(.*?)</script>", html, re.S)
+          meta = re.search(r'<meta[^>]*http-equiv="Content-Security-Policy"[^>]*content="([^"]*)"', html, re.I)
+          csp = meta and re.search(r"script-src\s+([^;]*)", meta.group(1))
+          if len(scripts) != 1:
+              errors.append(f"expected exactly 1 inline <script> in index.html, found {len(scripts)}")
+          elif not csp:
+              errors.append("could not find script-src in the index.html Content-Security-Policy")
+          else:
+              digest = base64.b64encode(hashlib.sha256(scripts[0].encode("utf-8")).digest()).decode()
+              if f"'sha256-{digest}'" not in csp.group(1):
+                  errors.append(f"CSP script hash is stale: update script-src to 'sha256-{digest}'")
+
+          # Warn (don't fail) if index.html changed but the version wasn't bumped:
+          # desktop users would keep the old copy until the next version bump.
+          tag = f"v{version}"
+          if subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"],
+                            capture_output=True).returncode == 0:
+              if subprocess.run(["git", "diff", "--quiet", tag, "HEAD", "--", "index.html"]).returncode != 0:
+                  print(f"::warning::index.html differs from release {tag} but the version was not bumped; "
+                        "desktop users will not receive this change until you bump the version.")
+
+          for e in errors:
+              print(f"::error::{e}")
+          if errors:
+              sys.exit(1)
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={version}\n")
+          print(f"OK: version {version}")
+
+  release:
+    needs: check
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # create the tag and the GitHub Release
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false # gh uses GH_TOKEN below; git never needs to push
+
+      - name: Create tag and GitHub Release (if this version is new)
+        run: |
+          tag="v${VERSION}"
+          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null; then
+            echo "Release ${tag} already exists; nothing to do."
+            exit 0
+          fi
+
+          latest=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' | sed 's/^v//' | sort -V | tail -n1)
+          if [ -n "$latest" ] && [ "$(printf '%s\n%s\n' "$latest" "$VERSION" | sort -V | tail -n1)" != "$VERSION" ]; then
+            echo "::error::Version ${VERSION} is lower than the latest release v${latest}."
+            exit 1
+          fi
+
+          gh release create "$tag" \
+            --target "$GITHUB_SHA" \
+            --title "Tasks ${tag}" \
+            --generate-notes
+          echo "Created release ${tag}: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}"
