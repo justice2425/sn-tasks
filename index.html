@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-L1g/3eYmDKE/WkkxiM6bzaweZ16x9Ev3oXIqhpvhy4E='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-M1V8dcKrIO3fED1xMbFF7S5/d1r40j9pNm6RHpLgV6I='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -414,7 +414,20 @@
     .modal-body { padding-bottom: calc(16px + env(safe-area-inset-bottom)); }
   }
   /* bigger, comfortable touch targets on finger-driven devices */
+  /* Board: subtasks inside the parent card */
+  .sub-list { margin: 8px 0 0 26px; padding-top: 6px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+  .sub-row { display: flex; align-items: center; gap: 8px; min-height: 30px; }
+  .sub-row .checkbox { margin-top: 0; }
+  .sub-title { flex: 1 1 auto; min-width: 0; text-align: left; background: none; border: none; padding: 4px 0; color: var(--fg); font: inherit; font-size: 13.5px; cursor: pointer; word-break: break-word; }
+  .sub-title:hover { text-decoration: underline; }
+  .sub-title.done { color: var(--muted); text-decoration: line-through; }
+  .sub-due { flex: 0 0 auto; font-size: 11px; }
+  button.sub-toggle { cursor: pointer; font: inherit; font-size: 12px; }
+  button.sub-toggle:hover { border-color: var(--fg); }
   @media (pointer: coarse) {
+    .sub-row { min-height: 44px; }
+    .sub-title { padding: 10px 0; }
+    button.sub-toggle { min-height: 32px; padding: 4px 10px; }
     .checkbox { width: 24px; height: 24px; }
     .checkbox.done::after { font-size: 15px; }
     .meta-row { padding-left: 32px; }
@@ -1050,6 +1063,7 @@ const App = (function () {
       estimate: (t.estimate == null || t.estimate === '') ? null : intIn(t.estimate, 1, 100000, null),
       parentId: t.parentId == null ? null : (mapTask(t.parentId) || null),
       collapsed: bool(t.collapsed),
+      boardOpen: bool(t.boardOpen),          // Board view: subtasks shown inside the card (default: closed)
       files: (Array.isArray(t.files) ? t.files : []).slice(0, LIMITS.files).map(validateFile).filter(Boolean),
       domain: (typeof t.domain === 'string' && t.domain.trim() && t.domain.length <= 40) ? t.domain : null,   // shown only if the area exists
       impact: intIn(t.impact, 0, 3, 0),
@@ -1300,7 +1314,7 @@ const App = (function () {
       id: id(), title: (title||'').trim(), notes:'', due:null, dueTime:null, priority:0,
       tags:[], links:[], subtasks:[], done:false, archived:false, hideFromList:false,
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
-      estimate:null, related:[], parentId:null, collapsed:false, files:[],
+      estimate:null, related:[], parentId:null, collapsed:false, boardOpen:false, files:[],
       domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
       createdAt: new Date().toISOString(), completedAt:null
     };
@@ -2088,6 +2102,35 @@ const App = (function () {
     board.appendChild(add);
     return board;
   }
+  // Board: true if any ancestor of t is itself shown on the board (passes the filters and sits in a list).
+  function ancestorOnBoard(t) {
+    let p = t.parentId, depth = 0;
+    while (p && data.tasks[p] && depth++ <= LIMITS.depth) { const a = data.tasks[p]; if (matchesFilters(a) && columnOf(a.id)) return true; p = a.parentId; }
+    return false;
+  }
+  // Board: the parent card's checklist of subtasks (and their own subtasks, indented).
+  function boardSubtasks(t) {
+    const box = el('div', 'sub-list'); box.setAttribute('role', 'group'); box.setAttribute('aria-label', 'Subtasks of ' + (t.title || 'untitled'));
+    box.addEventListener('click', (e) => e.stopPropagation());   // clicks inside the checklist never open the parent
+    const add = (pid, depth) => childrenOf(pid).forEach(ch => {
+      if (ch.archived) return;
+      const r = el('div', 'sub-row'); if (depth) r.style.paddingLeft = (depth * 18) + 'px';
+      const c = el('div', 'checkbox' + (ch.done ? ' done' : '')); c.setAttribute('role', 'checkbox'); c.setAttribute('aria-checked', ch.done ? 'true' : 'false'); c.tabIndex = 0;
+      c.setAttribute('aria-label', (ch.done ? 'Mark not done: ' : 'Mark done: ') + (ch.title || 'untitled'));
+      const tog = () => onComplete(ch, () => { toggleDone(ch); persist(); render(); });
+      c.onclick = (e) => { e.stopPropagation(); tog(); };
+      c.onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); tog(); } };
+      const b = el('button', 'sub-title' + (ch.done ? ' done' : '')); b.type = 'button'; b.textContent = ch.title || '(untitled)'; b.title = 'Open subtask';
+      b.onclick = (e) => { e.stopPropagation(); openModal(ch.id); };
+      r.appendChild(c); r.appendChild(b);
+      if (ch.due) { const st = dueState(ch.due); const d = el('span', 'badge sub-due' + (st === 'over' ? ' due-over' : st === 'today' ? ' due-today' : '')); d.textContent = fmtDue(ch.due); r.appendChild(d); }
+      box.appendChild(r);
+      if (depth < LIMITS.depth) add(ch.id, depth + 1);
+    });
+    add(t.id, 0);
+    return box;
+  }
+
   function renderColumn(col) {
     const wrap = el('div', 'column'); wrap.dataset.col = col.id;
     const head = el('div', 'column-head');
@@ -2095,7 +2138,7 @@ const App = (function () {
     const title = el('div', 'title'); title.textContent = col.name; title.title = 'Click to rename';
     const rename = () => startRename(col, title);
     title.onclick = rename;
-    let colTasks = (data.order[col.id] || []).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid])).map(tid => data.tasks[tid]);
+    let colTasks = (data.order[col.id] || []).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]) && !ancestorOnBoard(data.tasks[tid])).map(tid => data.tasks[tid]);
     if (filters.sort !== 'manual') colTasks = sortTasks(colTasks);   // sort within the column
     colTasks = arrangePinned(colTasks);                              // pinned tasks float to top
     const ids = colTasks.map(t => t.id);
@@ -2662,10 +2705,12 @@ const App = (function () {
       card.appendChild(bc);
     }
     const row = el('div', 'card-row');
+    const onBoard = data.ui.view === 'kanban';
     if (hasChildren(t.id)) {
-      const car = el('button', 'caret-btn', t.collapsed ? '▸' : '▾');
-      car.title = t.collapsed ? 'Expand subtasks' : 'Collapse subtasks';
-      car.onclick = (e) => { e.stopPropagation(); t.collapsed = !t.collapsed; persist(); render(); };
+      const open = onBoard ? t.boardOpen : !t.collapsed;
+      const car = el('button', 'caret-btn', open ? '▾' : '▸');
+      car.title = open ? 'Hide subtasks' : 'Show subtasks'; car.setAttribute('aria-expanded', String(open)); car.setAttribute('aria-label', car.title);
+      car.onclick = (e) => { e.stopPropagation(); if (onBoard) t.boardOpen = !t.boardOpen; else t.collapsed = !t.collapsed; persist(); render(); };
       row.appendChild(car);
     }
     const cb = el('div', 'checkbox' + (t.done ? ' done' : ''));
@@ -2714,7 +2759,16 @@ const App = (function () {
       chip.onclick = (e) => { e.stopPropagation(); rescheduleInline(t, card); };
       mr.appendChild(chip);
     }
-    if (hasChildren(t.id)) { const s = descendantStats(t.id); const b = el('span', 'badge sub'); b.innerHTML = icon('check') + s.done + '/' + s.total; mr.appendChild(b); }
+    if (hasChildren(t.id)) {
+      const s = descendantStats(t.id);
+      if (onBoard) {   // on the Board the counter doubles as a bigger show/hide button
+        const b = el('button', 'badge sub sub-toggle'); b.type = 'button'; b.innerHTML = icon('check') + s.done + '/' + s.total;
+        b.setAttribute('aria-expanded', String(!!t.boardOpen)); b.setAttribute('aria-label', (t.boardOpen ? 'Hide' : 'Show') + ' subtasks, ' + s.done + ' of ' + s.total + ' done');
+        b.title = t.boardOpen ? 'Hide subtasks' : 'Show subtasks';
+        b.onclick = (e) => { e.stopPropagation(); t.boardOpen = !t.boardOpen; persist(); render(); };
+        mr.appendChild(b);
+      } else { const b = el('span', 'badge sub'); b.innerHTML = icon('check') + s.done + '/' + s.total; mr.appendChild(b); }
+    }
     if (isBlocked(t)) mr.appendChild(el('span', 'badge due-over', '⛔ blocked'));
     const mini = [];
     if (isDeferred(t)) mini.push('⏳ ' + escapeHtml(fmtDue(t.start)));
@@ -2731,6 +2785,7 @@ const App = (function () {
       mr.appendChild(b);
     });
     if (mr.children.length) card.appendChild(mr);
+    if (onBoard && t.boardOpen && hasChildren(t.id)) card.appendChild(boardSubtasks(t));
 
     if (!selectMode && (data.ui.view === 'list' || data.ui.view === 'agenda')) attachSwipe(card, t, guard);
 
