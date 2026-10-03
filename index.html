@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-M1V8dcKrIO3fED1xMbFF7S5/d1r40j9pNm6RHpLgV6I='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-BdXp/TGEhL8yfsI5T9EL7Cp92uiI1yJ5mc/ru/vT/TU='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -39,13 +39,19 @@
     --warning:   var(--sn-stylekit-warning-color, #c47900);
     --radius: 8px;
     --shadow: 0 6px 24px rgba(0,0,0,0.18);
+    /* Derived from the theme's own text and background colours, so they keep their contrast in any light or dark theme:
+       --line-strong outlines controls (WCAG 2.2 asks 3:1 for control boundaries), --text-soft is small secondary text (4.5:1),
+       --icon colours icon-only buttons. */
+    --line-strong: color-mix(in srgb, var(--fg) 55%, var(--bg));
+    --text-soft:   color-mix(in srgb, var(--fg) 70%, var(--bg));
+    --icon:        color-mix(in srgb, var(--fg) 82%, var(--bg));
   }
 
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%;
     background: var(--bg); color: var(--fg);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
     font-size: 14px; line-height: 1.4;
     -webkit-font-smoothing: antialiased;
   }
@@ -72,7 +78,7 @@
   textarea { resize: vertical; min-height: 60px; }
   /* Notes: roomy and auto-growing (the drag handle is unusable by touch) */
   #m_notes { min-height: 110px; max-height: 60vh; line-height: 1.5; }
-  ::placeholder { color: var(--muted-2); }
+  ::placeholder { color: var(--text-soft); }
 
   /* Toolbar -------------------------------------------------------------- */
   .toolbar {
@@ -94,7 +100,7 @@
   .plan-row { display:flex; gap:10px; align-items:stretch; margin-bottom:8px; }
   .plan-time { width:84px; flex:0 0 auto; text-align:right; font-size:13px; color:var(--muted); padding-top:4px; }
   .plan-block { flex:1; background:var(--panel-2); border:1px solid var(--border); border-left:4px solid var(--accent); border-radius:6px; padding:8px 10px; cursor:pointer; }
-  .plan-block:hover { border-color:var(--muted-2); }
+  .plan-block:hover { border-color:var(--line-strong); }
   .plan-block.over { opacity:.6; }
   .seg button { border-radius: 0; border: none; padding: 5px 12px; }
   .seg button.active { background: var(--accent); color: var(--accent-fg); }
@@ -193,11 +199,11 @@
     background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--radius);
     padding: 8px 10px; margin-bottom: 8px; cursor: pointer; position: relative;
   }
-  .card:hover { border-color: var(--muted-2); }
+  .card:hover { border-color: var(--line-strong); }
   .card.dragging { opacity: .5; }
   .card.completed .card-title { text-decoration: line-through; color: var(--muted); }
   /* nested subtasks: indent guide + collapse caret + parent breadcrumb */
-  .card.child { border-left: 3px solid var(--muted-2); }
+  .card.child { border-left: 3px solid var(--line-strong); }
   .caret-btn { flex: 0 0 auto; width: 18px; height: 18px; padding: 0; margin-top: 1px; border: none; background: transparent;
     color: var(--muted); font-size: 11px; line-height: 1; cursor: pointer; border-radius: 4px; }
   .caret-btn:hover { background: var(--panel); color: var(--fg); }
@@ -205,7 +211,7 @@
   .breadcrumb:hover { color: var(--accent); text-decoration: underline; }
   .card-row { display: flex; align-items: flex-start; gap: 8px; }
   .checkbox {
-    flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--muted-2);
+    flex: 0 0 auto; width: 18px; height: 18px; border-radius: 5px; border: 2px solid var(--line-strong);
     margin-top: 1px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center;
   }
   .checkbox.done { background: var(--success); border-color: var(--success); }
@@ -223,7 +229,7 @@
   .badge.sub { }
   .badge svg { width: 12px; height: 12px; }
   /* calmer cards: secondary details collapse into one muted, borderless cluster */
-  .badge.mini { border: none; background: transparent; color: var(--muted-2); padding: 1px 2px; gap: 7px; }
+  .badge.mini { border: none; background: transparent; color: var(--text-soft); padding: 1px 2px; gap: 7px; }
   .badge.mini svg { width: 12px; height: 12px; }
   .mini-sep { display: inline-block; width: 1px; height: 10px; background: var(--border); vertical-align: middle; }
   /* inline edit fields (rename / reschedule without opening the editor) */
@@ -350,11 +356,11 @@
   .cv-cell.caltoday { outline:2px solid var(--accent); outline-offset:-2px; }
   .cv-top { display:flex; align-items:center; justify-content:space-between; }
   .cv-num { font-size:11px; color:var(--muted); }
-  .cv-add { font-size:13px; color:var(--muted-2); cursor:pointer; line-height:1; padding:0 3px; }
+  .cv-add { font-size:13px; color:var(--text-soft); cursor:pointer; line-height:1; padding:0 3px; }
   .cv-add:hover { color:var(--accent); }
   .cv-chip { font-size:11px; padding:1px 5px; border-radius:4px; background:var(--panel); border-left:3px solid var(--accent); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:pointer; }
   .cv-chip.done { text-decoration:line-through; color:var(--muted); }
-  .cv-more { font-size:10px; color:var(--muted-2); }
+  .cv-more { font-size:10px; color:var(--text-soft); }
   @media (max-width:620px){ .cv-cell { min-height:58px; } .cv-chip { font-size:10px; } }
   @media (max-width: 620px) { .matrix { grid-template-columns: 1fr; } }
 
@@ -455,6 +461,24 @@
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
   }
+  /* ---- Visibility pass: clearer controls, icons and small text (measured against WCAG 2.2 contrast targets) ---- */
+  button.ghost, .seg, #filterBtn, #m_moreToggle, .chip, .badge, .card,
+  input[type=text], input[type=search], input[type=date], input[type=time], input[type=url], input[type=number], textarea, select { border-color: var(--line-strong); }
+  .card:hover { border-color: var(--fg); }
+  .card.child { border-left-color: var(--line-strong); }
+  .checkbox { border-color: var(--line-strong); }
+  .checkbox.done { border-color: var(--success); }
+  button.ghost:hover:not(:disabled), .column-head .iconbtn:hover:not(:disabled) { border-color: var(--fg); color: var(--fg); }
+  .seg > button + button { box-shadow: inset 1px 0 0 var(--line-strong); }
+  .iconbtn, .caret-btn { color: var(--icon); }
+  .column-head .iconbtn { border: 1px solid var(--line-strong); border-radius: 6px; }
+  @media (pointer: fine) { .column-head .iconbtn { padding: 3px 4px; } }   /* mouse screens: slimmer, so outlines add no net width; touch keeps full size */
+  .badge, .small, .column-head .num { color: var(--text-soft); }
+  .badge.due-today { color: color-mix(in srgb, var(--warning) 65%, var(--fg)); border-color: color-mix(in srgb, var(--warning) 65%, var(--fg)); }
+  .badge.due-over  { color: color-mix(in srgb, var(--danger) 75%, var(--fg)); border-color: color-mix(in srgb, var(--danger) 75%, var(--fg)); }
+  .badge.tag { color: var(--fg); }
+  @media (hover: none) { .card-act { opacity: .8; } }   /* phones: no hover, so the star and pin stay clearly visible */
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 </style>
 </head>
 <body>
@@ -691,13 +715,13 @@
             <button class="ghost" id="m_addFile">📎 Attach file</button>
             <span class="small" id="m_fileMsg" style="color:var(--muted);"></span>
           </div>
-          <div class="small" style="color:var(--muted-2); margin-top:4px;">Stored inside this encrypted note. Images are compressed automatically; other files up to 1 MB.</div>
+          <div class="small" style="color:var(--text-soft); margin-top:4px;">Stored inside this encrypted note. Images are compressed automatically; other files up to 1 MB.</div>
         </div>
       </div>
     </div>
     <div class="modal-foot">
       <span class="small" id="m_meta"></span>
-      <span class="small" style="color:var(--muted-2);">Changes save automatically</span>
+      <span class="small" style="color:var(--text-soft);">Changes save automatically</span>
       <button class="primary" id="m_save">Done</button>
     </div>
   </div>
@@ -1007,7 +1031,9 @@ const App = (function () {
   const okId = (v) => typeof v === 'string' && ID_RE.test(v) && !BAD_KEYS.has(v);
   const str = (v, max) => { const s = typeof v === 'string' ? v : (typeof v === 'number' ? String(v) : ''); return max === Infinity ? s : s.slice(0, max); };
   const bool = (v) => v === true;
-  const dateOrNull = (v) => (typeof v === 'string' && DATE_RE.test(v)) ? v : null;
+  // A date must also exist: JavaScript quietly turns 2021-04-31 into May 1, so check it round-trips.
+  const realDate = (v) => { if (typeof v !== 'string' || !DATE_RE.test(v)) return false; const [y, m, d] = v.split('-').map(Number); const t = new Date(Date.UTC(y, m - 1, d)); return t.getUTCFullYear() === y && t.getUTCMonth() === m - 1 && t.getUTCDate() === d; };
+  const dateOrNull = (v) => realDate(v) ? v : null;
   const isoOrNull = (v) => {
     if (typeof v !== 'string' || v.length > 64) return null;
     if (ISO_RE.test(v)) return v;
@@ -1137,7 +1163,7 @@ const App = (function () {
     }));
     // wins log
     const wins = dict();
-    if (obj(d.wins)) Object.keys(d.wins).forEach(k => { if (DATE_RE.test(k)) { const w = (Array.isArray(d.wins[k]) ? d.wins[k] : []).filter(x => typeof x === 'string').slice(0, LIMITS.winsPerDay); if (w.length) wins[k] = w; } });
+    if (obj(d.wins)) Object.keys(d.wins).forEach(k => { if (realDate(k)) { const w = (Array.isArray(d.wins[k]) ? d.wins[k] : []).filter(x => typeof x === 'string').slice(0, LIMITS.winsPerDay); if (w.length) wins[k] = w; } });
     // settings (per board). Boards saved before settings existed get the conventions the
     // plugin used to hard-code, made explicit, so nothing changes for them; new boards
     // start neutral. Every setting can be changed under ⋮ → Settings.

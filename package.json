@@ -1,6 +1,6 @@
 {
   "name": "sn-tasks",
-  "version": "1.28.0",
+  "version": "1.29.0",
   "private": true,
   "description": "Tasks editor extension for Standard Notes. Version must match ext.json.",
   "license": "UNLICENSED"
