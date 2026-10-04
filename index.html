@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-BdXp/TGEhL8yfsI5T9EL7Cp92uiI1yJ5mc/ru/vT/TU='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-lKmEX3oatxsqdZOOvcihSRJBjQ2WpDmPsgVe2j+7pgo='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -460,6 +460,41 @@
   /* respect users who prefer less motion — kills swipe/level/reward/animation transitions */
   @media (prefers-reduced-motion: reduce) {
     *, *::before, *::after { animation-duration: .001ms !important; animation-iteration-count: 1 !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  }
+  /* ---- Quick add, list switcher, undo toast, and calmer phone layout ---- */
+  .board-nav { display: none; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: 24px; z-index: 300; display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 32px);
+    background: var(--fg); color: var(--bg); padding: 10px 14px; border-radius: 10px; box-shadow: var(--shadow); font-size: 14px; }
+  .toast-msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toast-act { flex: 0 0 auto; background: transparent; border: 1px solid currentColor; color: inherit; font-weight: 600; padding: 4px 12px; border-radius: 6px; min-height: 32px; }
+  .qa-ov { position: fixed; inset: 0; z-index: 250; background: rgba(0,0,0,.35); display: flex; align-items: flex-start; justify-content: center; padding: calc(8px + env(safe-area-inset-top)) 8px 0; }
+  .qa-sheet { width: 100%; max-width: 560px; background: var(--bg); color: var(--fg); border-radius: 14px; box-shadow: var(--shadow); padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 10px; }
+  .qa-top { display: flex; align-items: center; justify-content: space-between; }
+  .qa-sheet .qa-input { width: 100%; font-size: 17px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); color: var(--fg); }
+  .qa-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .qa-chips .chip { min-height: 36px; padding: 6px 12px; font-size: 14px; }
+  .qa-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .qa-lab { font-size: 13px; color: var(--text-soft); }
+  .qa-list { flex: 1 1 140px; min-width: 0; }
+  .qa-row button { min-height: 44px; padding: 8px 16px; }
+  .qa-msg { font-size: 13px; min-height: 1.2em; color: color-mix(in srgb, var(--success) 60%, var(--fg)); }
+  .qa-hint { font-size: 12px; color: var(--text-soft); }
+  @media (max-width: 620px) {
+    .quickbar { display: none !important; }                 /* the + button is the one way to add */
+    .kanban .quickadd { display: none; }                    /* + adds to the list you're looking at */
+    .column-head .iconbtn[title^="Move list"] { display: none; }   /* reorder lists on a bigger screen */
+    .card .badge.mini { display: none; }                    /* details stay in the task itself */
+    .card { padding: 10px 12px; }
+    .card-title { font-size: 15.5px; }
+    .card .checkbox { width: 26px; height: 26px; position: relative; }
+    .card .checkbox::before { content: ''; position: absolute; inset: -10px; }   /* about a 46px touch area */
+    .board-nav { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 8px 12px 4px; background: var(--bg); }
+    .board-nav::-webkit-scrollbar { display: none; }
+    .bn-tab { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 36px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: transparent; color: var(--fg); font-size: 14px; white-space: nowrap; }
+    .bn-tab.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+    .bn-count { font-size: 12px; opacity: .85; }
+    .surface.has-board-nav .kanban { height: calc(100% - 52px); }
+    .toast { bottom: calc(92px + env(safe-area-inset-bottom)); }
   }
   /* ---- Visibility pass: clearer controls, icons and small text (measured against WCAG 2.2 contrast targets) ---- */
   button.ghost, .seg, #filterBtn, #m_moreToggle, .chip, .badge, .card,
@@ -1482,6 +1517,9 @@ const App = (function () {
         toggleDone(t);          // marks done, spawns any recurrence, moves to the Done list
         if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
         persist(); render();
+        // Undo only while the completion is still the latest change; otherwise it would undo something else.
+        const mark = undoStack[undoStack.length - 1];
+        toast('Completed: ' + (t.title || 'task'), 'Undo', () => { if (undoStack[undoStack.length - 1] === mark) undo(); });
       };
       if (data.settings.confirmComplete) uiConfirm('Mark this task complete?', complete); else complete();
       return;
@@ -2048,7 +2086,7 @@ const App = (function () {
     if (ctaLabel && ctaFn) { const b = el('button', 'primary em-cta', ctaLabel); b.onclick = ctaFn; box.appendChild(b); }
     return box;
   }
-  function focusQuickAdd() { const q = $('#quickAdd'); if (q && !q.closest('[hidden]')) { q.focus(); } else { $('#addTaskBtn').click(); } }
+  function focusQuickAdd() { if (isPhone()) { openQuickAdd(); return; } const q = $('#quickAdd'); if (q && !q.closest('[hidden]')) { q.focus(); } else { $('#addTaskBtn').click(); } }
 
   function render() {
     if (!data) return;
@@ -2079,14 +2117,20 @@ const App = (function () {
 
     const surface = $('#surface');
     surface.className = 'surface' + (data.ui.density === 'compact' ? ' compact' : '');
+    // Keep your place: every redraw rebuilds the view, so remember the scroll positions and restore them
+    // afterwards (on phones the Board used to snap back to the first list after every add or tick).
+    const keep = lastRenderedView === data.ui.view ? captureScroll(surface) : null;
     surface.innerHTML = '';
-    if (data.ui.view === 'kanban') surface.appendChild(renderKanban());
+    if (data.ui.view === 'kanban') { surface.classList.add('has-board-nav'); surface.appendChild(boardNav()); const kb = renderKanban(); surface.appendChild(kb); kb.addEventListener('scroll', onBoardScroll, { passive: true }); }
     else if (data.ui.view === 'agenda') surface.appendChild(renderAgenda());
     else if (data.ui.view === 'matrix') surface.appendChild(renderMatrix());
     else if (data.ui.view === 'calendar') surface.appendChild(renderCalendar());
     else if (data.ui.view === 'focus') surface.appendChild(renderFocus());
     else if (data.ui.view === 'plan') surface.appendChild(renderPlan());
     else surface.appendChild(renderList());
+    if (keep) restoreScroll(surface, keep);
+    lastRenderedView = data.ui.view;
+    if (data.ui.view === 'kanban') updateBoardNav();
 
     const fab = $('#addTaskBtn'); if (fab) fab.style.display = selectMode ? 'none' : '';
     renderBulkBar();
@@ -2128,6 +2172,99 @@ const App = (function () {
     board.appendChild(add);
     return board;
   }
+  /* ---- Keeping your place, the Board list switcher, quick add, and the undo toast ---- */
+  let lastRenderedView = null, boardNavRaf = 0, toastTimer = null;
+  function captureScroll(surface) {
+    const k = surface.querySelector('.kanban'), cols = {};
+    if (k) k.querySelectorAll('.column[data-col]').forEach(c => { const b = c.querySelector('.column-body'); if (b) cols[c.dataset.col] = b.scrollTop; });
+    return { sy: surface.scrollTop, kx: k ? k.scrollLeft : null, cols };
+  }
+  function restoreScroll(surface, keep) {
+    const k = surface.querySelector('.kanban');
+    if (k && keep.kx != null) {
+      k.scrollLeft = keep.kx;
+      k.querySelectorAll('.column[data-col]').forEach(c => { const b = c.querySelector('.column-body'); if (b && keep.cols[c.dataset.col] != null) b.scrollTop = keep.cols[c.dataset.col]; });
+    }
+    surface.scrollTop = keep.sy;
+  }
+  // which Board list is centred on screen (on phones one list fills the screen)
+  function currentBoardCol() {
+    const kb = document.querySelector('.kanban'); if (!kb) return null;
+    const r = kb.getBoundingClientRect(), mid = r.left + r.width / 2; let best = null, bd = Infinity;
+    kb.querySelectorAll('.column[data-col]').forEach(c => { const q = c.getBoundingClientRect(), dd = Math.abs(q.left + q.width / 2 - mid); if (dd < bd) { bd = dd; best = c.dataset.col; } });
+    return best;
+  }
+  function scrollBoardTo(colId, smooth) {
+    const kb = document.querySelector('.kanban'); if (!kb) return;
+    const col = [...kb.querySelectorAll('.column[data-col]')].find(c => c.dataset.col === colId); if (!col) return;
+    const kr = kb.getBoundingClientRect(), cr = col.getBoundingClientRect();
+    kb.scrollTo({ left: kb.scrollLeft + (cr.left - kr.left) - (kb.clientWidth - cr.width) / 2, behavior: smooth ? 'smooth' : 'auto' });
+  }
+  function boardNav() {
+    const nav = el('div', 'board-nav'); nav.setAttribute('role', 'tablist'); nav.setAttribute('aria-label', 'Lists');
+    data.columns.forEach(c => {
+      const n = (data.order[c.id] || []).filter(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]) && !ancestorOnBoard(data.tasks[tid])).length;
+      const b = el('button', 'bn-tab'); b.type = 'button'; b.dataset.col = c.id; b.setAttribute('role', 'tab');
+      const nm = el('span', 'bn-name'); nm.textContent = c.name; b.appendChild(nm); b.appendChild(el('span', 'bn-count', String(n)));
+      b.onclick = () => scrollBoardTo(c.id, true); nav.appendChild(b);
+    });
+    return nav;
+  }
+  function updateBoardNav() {
+    const cur = currentBoardCol(), nav = document.querySelector('.board-nav'); if (!nav) return;
+    nav.querySelectorAll('.bn-tab').forEach(b => { const on = b.dataset.col === cur; b.classList.toggle('active', on); b.setAttribute('aria-selected', String(on)); if (on) { const nr = nav.getBoundingClientRect(), br = b.getBoundingClientRect(); if (br.left < nr.left || br.right > nr.right) nav.scrollLeft += br.left - nr.left - 12; } });
+  }
+  function onBoardScroll() { if (boardNavRaf) return; boardNavRaf = requestAnimationFrame(() => { boardNavRaf = 0; updateBoardNav(); }); }
+  // A short message with an optional action (used for "Completed · Undo").
+  function toast(msg, actionLabel, action) {
+    const old = document.getElementById('toast'); if (old) old.remove(); clearTimeout(toastTimer);
+    const t = el('div', 'toast'); t.id = 'toast'; t.setAttribute('role', 'status'); t.setAttribute('aria-live', 'polite');
+    const m = el('span', 'toast-msg'); m.textContent = msg; t.appendChild(m);
+    if (actionLabel) { const b = el('button', 'toast-act'); b.type = 'button'; b.textContent = actionLabel; b.onclick = () => { clearTimeout(toastTimer); t.remove(); action(); }; t.appendChild(b); }
+    document.body.appendChild(t); toastTimer = setTimeout(() => t.remove(), 5000);
+  }
+  // Phones: a quick-add panel at the top of the screen (clear of the keyboard), like Todoist's quick add.
+  function openQuickAdd() {
+    const open = document.getElementById('qaOv'); if (open) { open.querySelector('.qa-input').focus(); return; }
+    const today = todayStr(), HIGH = parseQuickAdd('x !high').priority || 3;
+    const startCol = (data.ui.view === 'kanban' && currentBoardCol()) || defaultColumnId();
+    const st = { when: null, high: false };
+    const ov = el('div', 'qa-ov'); ov.id = 'qaOv';
+    const sh = el('div', 'qa-sheet'); sh.setAttribute('role', 'dialog'); sh.setAttribute('aria-modal', 'true'); sh.setAttribute('aria-label', 'Add a task');
+    const top = el('div', 'qa-top'); top.appendChild(el('strong', null, 'New task'));
+    const x = el('button', 'iconbtn qa-close', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); top.appendChild(x); sh.appendChild(top);
+    const inp = el('input', 'qa-input'); inp.type = 'text'; inp.placeholder = 'What do you need to do?'; inp.setAttribute('aria-label', 'Task'); inp.autocomplete = 'off'; inp.setAttribute('enterkeyhint', 'done'); sh.appendChild(inp);
+    const chips = el('div', 'qa-chips');
+    const chip = (label, on, fn) => { const b = el('button', 'chip' + (on ? ' active' : '')); b.type = 'button'; b.textContent = label; b.setAttribute('aria-pressed', String(!!on)); b.onclick = fn; return b; };
+    const draw = () => { chips.innerHTML = '';
+      [['Today', today], ['Tomorrow', addDays(today, 1)], ['Next week', addDays(today, 7)]].forEach(([l, v]) => chips.appendChild(chip(l, st.when === v, () => { st.when = st.when === v ? null : v; draw(); inp.focus(); })));
+      chips.appendChild(chip('! High priority', st.high, () => { st.high = !st.high; draw(); inp.focus(); })); };
+    draw(); sh.appendChild(chips);
+    const row = el('div', 'qa-row'); const lab = el('label', 'qa-lab', 'List'); const sel = el('select', 'qa-list'); sel.id = 'qaList'; lab.htmlFor = 'qaList';
+    data.columns.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); }); sel.value = startCol;
+    const more = el('button', 'ghost', 'Details…'); more.type = 'button'; const add = el('button', 'primary', 'Add'); add.type = 'button';
+    [lab, sel, more, add].forEach(n => row.appendChild(n)); sh.appendChild(row);
+    const msg = el('div', 'qa-msg'); msg.setAttribute('role', 'status'); sh.appendChild(msg);
+    const hint = el('div', 'qa-hint'); hint.textContent = 'Tip: “Call mum tomorrow 5pm !high #family” fills in the date, time, priority and tag.'; sh.appendChild(hint);
+    ov.appendChild(sh); document.body.appendChild(ov);
+    // same steps as the existing add boxes: parse, create in the chosen list, copy the parsed fields
+    // the chosen list may have been deleted meanwhile (e.g. by a sync); never file a task under a missing list
+    const listId = () => data.columns.some(c => c.id === sel.value) ? sel.value : defaultColumnId();
+    const create = () => { const raw = inp.value.trim(); if (!raw) return null; const pq = parseQuickAdd(raw); const t = newTask(pq.title || raw, listId());
+      t.due = st.when || pq.due; t.dueTime = pq.dueTime; t.priority = st.high ? HIGH : pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor); return t; };
+    const close = () => { ov.remove(); const f = $('#addTaskBtn'); if (f) f.focus(); };
+    add.onclick = () => { const t = create(); if (!t) { inp.focus(); return; }
+      persist(); render(); if (data.ui.view === 'kanban') { scrollBoardTo(sel.value, false); updateBoardNav(); }
+      const ln = (data.columns.find(c => c.id === sel.value) || {}).name || 'your list';
+      inp.value = ''; st.when = null; st.high = false; draw(); msg.textContent = 'Added “' + t.title + '” to ' + ln + '.'; inp.focus(); };
+    more.onclick = () => { const t = create() || newTask('', listId()); persist(); ov.remove(); render(); openModal(t.id); };
+    x.onclick = close; ov.addEventListener('mousedown', (e) => { if (e.target === ov) close(); });
+    inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); add.onclick(); } };
+    sh.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+    inp.focus();   // inside the tap, so phones raise the keyboard
+  }
+  const isPhone = () => window.matchMedia('(max-width: 620px)').matches;
+
   // Board: true if any ancestor of t is itself shown on the board (passes the filters and sits in a list).
   function ancestorOnBoard(t) {
     let p = t.parentId, depth = 0;
@@ -3282,7 +3419,7 @@ const App = (function () {
       if (data.settings.newTaskDueToday) t.due = todayStr();
       persist(); render(); openModal(t.id);
     };
-    $('#addTaskBtn').onclick = openNewTask;
+    $('#addTaskBtn').onclick = () => (isPhone() ? openQuickAdd() : openNewTask());
     $('#addTaskTop').onclick = openNewTask;
     // modal
     $('#m_close').onclick = closeModal;
