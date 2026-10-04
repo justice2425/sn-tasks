@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-lKmEX3oatxsqdZOOvcihSRJBjQ2WpDmPsgVe2j+7pgo='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-LiziifLhtkSfgb2/7He2zQ+zoNg/c4KENY4lVjtfSW4='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -496,6 +496,16 @@
     .surface.has-board-nav .kanban { height: calc(100% - 52px); }
     .toast { bottom: calc(92px + env(safe-area-inset-bottom)); }
   }
+  /* ---- Fresh start dialog ---- */
+  .fs-body { display: flex; flex-direction: column; gap: 10px; }
+  .fs-p { margin: 0; font-size: 14px; line-height: 1.5; }
+  .fs-muted { color: var(--text-soft); font-size: 13px; }
+  .fs-h { margin: 6px 0 0; font-size: 14px; }
+  .fs-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .fs-row button { min-height: 40px; }
+  .fs-status { font-size: 13px; color: var(--text-soft); flex: 1 1 180px; }
+  .fs-text { width: 100%; min-height: 110px; box-sizing: border-box; font-size: 13px; }
+  .fs-steps { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
   /* ---- Visibility pass: clearer controls, icons and small text (measured against WCAG 2.2 contrast targets) ---- */
   button.ghost, .seg, #filterBtn, #m_moreToggle, .chip, .badge, .card,
   input[type=text], input[type=search], input[type=date], input[type=time], input[type=url], input[type=number], textarea, select { border-color: var(--line-strong); }
@@ -1963,10 +1973,94 @@ const App = (function () {
       { label: selectMode ? 'Exit multi-select' : 'Select multiple', onClick: () => { selectMode = !selectMode; if (!selectMode) selectedIds.clear(); render(); } },
       { label: '↶ Undo', onClick: undo },
       { label: 'Statistics & tools', onClick: openStats },
+      { label: 'Fresh start (move open tasks to a new note)…', onClick: openFreshStart },
       { sep: true },
       { label: '⚙ Settings…', onClick: openCustomize }
     ]);
   }
+  /* ---- Fresh start ----
+     Standard Notes keeps earlier versions of a note, including tasks since completed or deleted. Fresh start copies only
+     the open tasks (plus lists, tag colours and settings) so they can be pasted into a brand-new note, after which the old
+     note, and its version history, can be deleted. Carried-over data is an allow-list: anything else stays behind. */
+  const FRESH_HEADER = 'SN-TASKS-FRESH-START v1';
+  const FRESH_KEEP = ['schema', 'columns', 'tasks', 'order', 'tags', 'settings', 'ui', 'templates'];
+  function freshStartSnapshot() {
+    const src = JSON.parse(JSON.stringify(data)), out = {};
+    FRESH_KEEP.forEach(k => { if (src[k] !== undefined) out[k] = src[k]; });
+    const all = Object.values(src.tasks || {}), keep = new Set(all.filter(t => !t.done && !t.archived).map(t => t.id));
+    const tasks = Object.create(null); let subs = 0;
+    keep.forEach(tid => { const t = src.tasks[tid];
+      if (t.parentId && !keep.has(t.parentId)) t.parentId = null;      // parent finished: the open subtask becomes a task
+      if (t.parentId) subs++;
+      ['blockedBy', 'related'].forEach(f => { if (Array.isArray(t[f])) t[f] = t[f].filter(x => keep.has(x)); });
+      tasks[tid] = t; });
+    out.tasks = tasks;
+    const order = Object.create(null); (src.columns || []).forEach(c => { order[c.id] = ((src.order || {})[c.id] || []).filter(x => keep.has(x)); }); out.order = order;
+    const used = new Set(); Object.values(tasks).forEach(t => (t.tags || []).forEach(g => used.add(g)));
+    const tags = Object.create(null); Object.keys(src.tags || {}).forEach(g => { if (used.has(g)) tags[g] = src.tags[g]; }); out.tags = tags;
+    return { text: FRESH_HEADER + '\n' + JSON.stringify(out), kept: keep.size, subs, lists: (src.columns || []).length,
+      done: all.filter(t => t.done && !t.archived).length, archived: all.filter(t => t.archived).length };
+  }
+  // Paste side: only into an empty note, and only through the same checks Tasks applies to any note it loads.
+  function freshStartImport(raw) {
+    if (Object.keys(data.tasks).length) return 'This note already has tasks. Open Fresh start in a brand-new, empty note to paste.';
+    let s = String(raw || '').trim(); if (s.startsWith(FRESH_HEADER)) s = s.slice(FRESH_HEADER.length).trim();
+    if (!s) return 'Paste the copied text first.';
+    if (s.length > 20 * 1024 * 1024) return 'That text is too large to be a copied task list.';
+    let parsed = null; try { parsed = JSON.parse(s); } catch (e) { parsed = null; }
+    if (!looksLikeBoard(parsed)) return 'That doesn’t look like copied tasks. Copy them again from the old note and paste the whole text.';
+    data = boardFromText(s); sanitize(); persist(); render();
+    return null;
+  }
+  function copyPlain(text, done) {
+    const fallback = () => { let ok = false; try { const ta = document.createElement('textarea'); ta.value = text; ta.setAttribute('readonly', ''); ta.style.position = 'fixed'; ta.style.opacity = '0'; document.body.appendChild(ta); ta.select(); ok = document.execCommand('copy'); ta.remove(); } catch (e) {} done(ok); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => done(true), fallback); else fallback();
+  }
+  function openFreshStart() {
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '120';
+    const box = el('div', 'modal'); box.style.maxWidth = '520px'; box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', 'Fresh start');
+    const head = el('div', 'modal-head', '<strong class="grow">Fresh start</strong>');
+    const shut = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); shut(); } };   // works wherever focus is
+    const close = el('button', 'iconbtn', '✕'); close.type = 'button'; close.setAttribute('aria-label', 'Close'); close.onclick = shut; head.appendChild(close);
+    const body = el('div', 'modal-body fs-body');
+    const P = (txt, cls) => { const d = el('p', cls || 'fs-p'); d.textContent = txt; return d; };
+    const empty = !Object.keys(data.tasks).length;
+    body.appendChild(P(empty
+      ? 'This note is empty, so it can receive the open tasks you copied from your old note. Once they are here, you can delete the old note, and its version history with it.'
+      : 'Standard Notes keeps earlier versions of this note in its history, including tasks you have since completed or deleted. A fresh start moves only your open tasks into a brand-new note, so you can then delete this note along with its history.'));
+    if (!empty) {
+      const snap = freshStartSnapshot();
+      body.appendChild(el('h4', 'fs-h', '1. Copy from this note'));
+      body.appendChild(P('Copies ' + snap.kept + ' open task' + (snap.kept === 1 ? '' : 's') + (snap.subs ? ' (' + snap.subs + ' of them subtasks)' : '') + ', your ' + snap.lists + ' list' + (snap.lists === 1 ? '' : 's') + ', tag colours and settings.'));
+      body.appendChild(P('Left behind: ' + snap.done + ' completed and ' + snap.archived + ' archived task' + (snap.archived === 1 ? '' : 's') + ', and your completion history.', 'fs-p fs-muted'));
+      const row = el('div', 'fs-row'); const cb = el('button', 'primary', 'Copy my open tasks'); cb.type = 'button'; const st = el('span', 'fs-status'); st.setAttribute('role', 'status');
+      row.appendChild(cb); row.appendChild(st); body.appendChild(row);
+      const manual = el('textarea', 'fs-text'); manual.readOnly = true; manual.hidden = true; manual.setAttribute('aria-label', 'Copied tasks, to select and copy by hand'); body.appendChild(manual);
+      cb.onclick = () => copyPlain(snap.text, (ok) => {
+        if (ok) { st.textContent = 'Copied. Now open a new note (step 2).'; manual.hidden = true; }
+        else { st.textContent = 'Copying was blocked here. Select all the text below and copy it.'; manual.value = snap.text; manual.hidden = false; manual.focus(); manual.select(); } });
+      body.appendChild(el('h4', 'fs-h', '2. In a brand-new note'));
+      const ol = el('ol', 'fs-steps');
+      ['Create a new note and choose Tasks as its editor.', 'Open ⋮ → Fresh start in that note, paste the copied text, and tap Paste tasks.', 'Check everything arrived.', 'Come back to this note, move it to the trash, and empty the trash.'].forEach(x => { const li = el('li'); li.textContent = x; ol.appendChild(li); });
+      body.appendChild(ol);
+      body.appendChild(P('While copied, your open tasks sit on the clipboard as plain text, and some clipboard managers keep copies. Standard Notes doesn’t document whether deleting a note removes its history from their servers, but once deleted it is no longer reachable in your apps.', 'fs-p fs-muted'));
+    } else {
+      body.appendChild(el('h4', 'fs-h', 'Paste your tasks'));
+      body.appendChild(P('Paste the text you copied with “Copy my open tasks” in your old note.'));
+      const ta = el('textarea', 'fs-text'); ta.setAttribute('aria-label', 'Paste copied tasks here'); ta.placeholder = FRESH_HEADER + ' …'; body.appendChild(ta);
+      const row = el('div', 'fs-row'); const pb = el('button', 'primary', 'Paste tasks'); pb.type = 'button'; const st = el('span', 'fs-status'); st.setAttribute('role', 'status');
+      row.appendChild(pb); row.appendChild(st); body.appendChild(row);
+      pb.onclick = () => { const err = freshStartImport(ta.value); if (err) { st.textContent = err; return; }
+        const n = Object.keys(data.tasks).length; ta.remove(); pb.remove();
+        st.textContent = 'Moved ' + n + ' task' + (n === 1 ? '' : 's') + ' into this note. Once you’ve checked them, go back to the old note, move it to the trash, and empty the trash.';
+        const ok = el('button', 'primary', 'Done'); ok.type = 'button'; ok.onclick = shut; row.insertBefore(ok, st); ok.focus(); };
+    }
+    box.appendChild(head); box.appendChild(body); ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov) shut(); });
+    document.addEventListener('keydown', onKey, true);
+  }
+
   function openCustomize() {
     const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '120';
     const box = el('div', 'modal'); box.style.maxWidth = '480px';
