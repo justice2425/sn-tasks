@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-LiziifLhtkSfgb2/7He2zQ+zoNg/c4KENY4lVjtfSW4='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Sa29qp+gCmhh0QTW5weyN8oSeMzfkYLDIwlOZRmvqms='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -506,6 +506,16 @@
   .fs-status { font-size: 13px; color: var(--text-soft); flex: 1 1 180px; }
   .fs-text { width: 100%; min-height: 110px; box-sizing: border-box; font-size: 13px; }
   .fs-steps { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
+  /* ---- Celebrations ---- */
+  .fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 290; }   /* under the Undo bar (300), over everything else */
+  .cheer { position: fixed; left: 0; right: 0; margin: 0 auto; width: max-content; top: calc(14px + env(safe-area-inset-top)); z-index: 401; pointer-events: none;
+    background: var(--bg); color: var(--fg); border: 1px solid var(--line-strong); border-radius: 999px; padding: 10px 18px; box-shadow: var(--shadow);
+    font-weight: 600; font-size: 15px; max-width: calc(100vw - 32px); text-align: center; animation: cheer-in .35s ease-out; transition: opacity .4s; }
+  .cheer.out { opacity: 0; }
+  @keyframes cheer-in { from { opacity: 0; transform: translateY(-10px) scale(.96); } to { opacity: 1; transform: none; } }
+  .checkbox.cb-pop { animation: cb-pop .4s cubic-bezier(.3, 1.6, .5, 1); }
+  @keyframes cb-pop { 0% { transform: scale(1); } 35% { transform: scale(1.38); } 100% { transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .checkbox.cb-pop, .cheer { animation: none; } }
   /* ---- Visibility pass: clearer controls, icons and small text (measured against WCAG 2.2 contrast targets) ---- */
   button.ghost, .seg, #filterBtn, #m_moreToggle, .chip, .badge, .card,
   input[type=text], input[type=search], input[type=date], input[type=time], input[type=url], input[type=number], textarea, select { border-color: var(--line-strong); }
@@ -1045,7 +1055,7 @@ const App = (function () {
       order: { [c1]:[], [c2]:[], [c3]:[] },
       tags: {},
       ui: { view: 'list' },
-      settings: { doneColumn: c3, defaultColumn: null, confirmComplete: false, newTaskDueToday: false, domains: [] }
+      settings: { doneColumn: c3, defaultColumn: null, confirmComplete: false, newTaskDueToday: false, celebrate: 'full', domains: [] }
     };
   }
   function id() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID().slice(0,8) : Math.random().toString(36).slice(2,10); }
@@ -1217,11 +1227,12 @@ const App = (function () {
     if (obj(d.settings)) {
       const st = d.settings;
       const seen = new Set();
-      settings = Object.assign(extras(st, ['doneColumn', 'defaultColumn', 'confirmComplete', 'newTaskDueToday', 'domains']), {
+      settings = Object.assign(extras(st, ['doneColumn', 'defaultColumn', 'confirmComplete', 'newTaskDueToday', 'celebrate', 'domains']), {
         doneColumn: mapCol(st.doneColumn),
         defaultColumn: mapCol(st.defaultColumn),
         confirmComplete: bool(st.confirmComplete),
         newTaskDueToday: bool(st.newTaskDueToday),
+        celebrate: st.celebrate === 'subtle' || st.celebrate === 'off' ? st.celebrate : 'full',
         domains: (Array.isArray(st.domains) ? st.domains : []).filter(obj).slice(0, 100).map(x => ({
           k: str(x.k, 40).trim(), c: hexOr(x.c, '#8b949e'), i: str(x.i, 16).trim()
         })).filter(x => x.k && !seen.has(x.k) && seen.add(x.k))
@@ -1232,6 +1243,7 @@ const App = (function () {
         defaultColumn: colByName(/^\s*urgent\s*$/i),
         confirmComplete: true,
         newTaskDueToday: true,
+        celebrate: 'full',
         domains: LEGACY_DOMAINS.map(x => Object.assign({}, x))
       };
       columns.forEach(c => { if (/^\s*important\s*$/i.test(c.name)) c.onComplete = 'delete'; });
@@ -1508,10 +1520,126 @@ const App = (function () {
   // Decide what "completing" a task means. Tasks in a list set to "delete when completed"
   // are deleted (always after confirmation). Everything else is marked done, with a
   // confirmation only if the board's "Confirm before completing" setting is on.
+  /* ---- Celebrations ----
+     Every completion: the tick pops and a short confetti burst comes from where you tapped. Milestones (the last task
+     due today, or the last open task in a list) add balloons and a message. Drawn on one temporary canvas that never
+     catches taps; nothing runs once it's over. Respects Settings → Celebrate and the device's reduced-motion setting. */
+  const FX_COLORS = ['#2f6fed', '#30a46c', '#f5a623', '#e5484d', '#8e4ec6', '#0aa5b8', '#d6409f', '#ffc53d'];
+  let lastPointer = null, fx = null, cheerTimer = null;
+  document.addEventListener('pointerdown', (e) => { lastPointer = { x: e.clientX, y: e.clientY, at: Date.now() }; }, { capture: true, passive: true });
+  const reducedMotion = () => !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function completionOrigin() {
+    if (lastPointer && Date.now() - lastPointer.at < 1500) return { x: lastPointer.x, y: lastPointer.y };
+    const a = document.activeElement;
+    if (a && a !== document.body && a.getBoundingClientRect) { const r = a.getBoundingClientRect(); if (r.width) return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }
+    return { x: window.innerWidth / 2, y: window.innerHeight / 2 };
+  }
+  function openCounts(colId) {
+    const today = todayStr(); let dueNow = 0, inList = 0;
+    Object.values(data.tasks).forEach(x => { if (!x || x.done || x.archived) return;
+      if (x.due && x.due <= today) dueNow++;
+      if (colId && columnOf(x.id) === colId) inList++; });
+    return { dueNow, inList };
+  }
+  function afterComplete(tid, colId, origin, before, wasDue) {
+    const after = openCounts(colId); let ms = null, name = '';
+    if (wasDue && before.dueNow > 0 && after.dueNow === 0) ms = 'today';
+    else if (colId && colId !== data.settings.doneColumn && before.inList > 0 && after.inList === 0) { ms = 'list'; name = (data.columns.find(c => c.id === colId) || {}).name || 'This list'; }
+    celebrate(origin, ms, name, tid, 1);
+  }
+  function celebrate(origin, milestone, listName, tid, scale) {
+    const mode = data.settings.celebrate === 'subtle' || data.settings.celebrate === 'off' ? data.settings.celebrate : 'full';
+    if (mode === 'off') return;
+    if (tid && window.CSS && CSS.escape) {   // pop the tick on the redrawn card, if it's still on screen
+      const cb = document.querySelector('.card[data-id="' + CSS.escape(tid) + '"] .checkbox');
+      if (cb) { cb.classList.remove('cb-pop'); void cb.offsetWidth; cb.classList.add('cb-pop'); }
+    }
+    try { if (navigator.vibrate && window.matchMedia('(pointer: coarse)').matches) navigator.vibrate(milestone ? [12, 70, 18] : 10); } catch (e) {}
+    if (milestone) showCheer(milestone === 'today' ? 'Everything due today is done. Nice work!' : '“' + listName + '” is all clear!');
+    if (mode !== 'full' || reducedMotion()) return;
+    confettiBurst(origin.x, origin.y, Math.round(26 * (scale || 1)));
+    if (milestone) { confettiRain(70); balloons(9); }
+  }
+  function showCheer(text) {
+    const old = document.getElementById('cheer'); if (old) old.remove(); clearTimeout(cheerTimer);
+    const c = el('div', 'cheer'); c.id = 'cheer'; c.setAttribute('role', 'status'); c.setAttribute('aria-live', 'polite'); c.textContent = text;
+    document.body.appendChild(c);
+    cheerTimer = setTimeout(() => { c.classList.add('out'); setTimeout(() => c.remove(), 450); }, 2600);
+  }
+  function fxLayer() {
+    if (fx) return fx;
+    const c = document.createElement('canvas'); c.className = 'fx-layer'; c.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(c);
+    fx = { c, ctx: c.getContext('2d'), parts: [], raf: 0, last: 0, born: performance.now() };
+    sizeFx(); window.addEventListener('resize', sizeFx);
+    return fx;
+  }
+  function sizeFx() {
+    if (!fx) return; const d = Math.min(2, window.devicePixelRatio || 1), w = window.innerWidth, h = window.innerHeight;
+    fx.c.width = Math.round(w * d); fx.c.height = Math.round(h * d); fx.c.style.width = w + 'px'; fx.c.style.height = h + 'px'; fx.ctx.setTransform(d, 0, 0, d, 0, 0);
+  }
+  function fxAdd(list) {
+    const f = fxLayer(); f.born = performance.now();
+    f.parts.push(...list); if (f.parts.length > 260) f.parts.splice(0, f.parts.length - 260);
+    if (!f.raf) { f.last = performance.now(); f.raf = requestAnimationFrame(fxTick); }
+  }
+  const rnd = (a, b) => a + Math.random() * (b - a), pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+  function confettiBurst(x, y, n) {
+    const out = [];
+    for (let i = 0; i < n; i++) { const ang = rnd(-Math.PI * 0.92, -Math.PI * 0.08), sp = rnd(260, 560);
+      out.push({ k: 'c', x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: rnd(0, 6.3), vr: rnd(-12, 12), w: rnd(5, 9), h: rnd(3, 6), col: pick(FX_COLORS), age: 0, life: rnd(0.8, 1.25), g: 1100 }); }
+    fxAdd(out);
+  }
+  function confettiRain(n) {
+    const w = window.innerWidth, out = [];
+    for (let i = 0; i < n; i++) out.push({ k: 'c', x: rnd(0, w), y: rnd(-120, -10), vx: rnd(-40, 40), vy: rnd(80, 260), r: rnd(0, 6.3), vr: rnd(-8, 8), w: rnd(6, 10), h: rnd(3, 6), col: pick(FX_COLORS), age: 0, life: rnd(2.2, 3.2), g: 160, sway: rnd(0, 6.3) });
+    fxAdd(out);
+  }
+  function balloons(n) {
+    const w = window.innerWidth, h = window.innerHeight, out = [];
+    for (let i = 0; i < n; i++) { const r = rnd(16, 26);
+      out.push({ k: 'b', x: (i + 0.5) * w / n + rnd(-w / (n * 3), w / (n * 3)), y: h + r * 2 + rnd(0, 160), vy: -rnd(150, 240), r, col: pick(FX_COLORS), age: 0, life: 6, sway: rnd(0, 6.3) }); }
+    fxAdd(out);
+  }
+  function fxTick(now) {
+    const f = fx; if (!f) return;
+    const dt = Math.min(0.05, (now - f.last) / 1000); f.last = now;
+    const ctx = f.ctx, W = window.innerWidth, H = window.innerHeight; ctx.clearRect(0, 0, W, H);
+    f.parts = f.parts.filter(p => {
+      p.age += dt; if (p.age > p.life) return false;
+      const fade = Math.min(1, (p.life - p.age) / (p.life * 0.3));
+      if (p.k === 'c') {
+        p.vy += p.g * dt; p.vx *= 0.985; p.vy *= p.g > 500 ? 0.99 : 1; p.r += p.vr * dt;
+        p.x += (p.vx + (p.sway !== undefined ? Math.sin(p.age * 3 + p.sway) * 40 : 0)) * dt; p.y += p.vy * dt;
+        if (p.y > H + 20) return false;
+        ctx.save(); ctx.globalAlpha = fade; ctx.translate(p.x, p.y); ctx.rotate(p.r); ctx.scale(1, Math.abs(Math.cos(p.age * 9 + p.r)) * 0.7 + 0.3);
+        ctx.fillStyle = p.col; ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h); ctx.restore();
+      } else {
+        p.y += p.vy * dt; const x = p.x + Math.sin(p.age * 1.6 + p.sway) * 14;
+        if (p.y < -p.r * 5) return false;
+        ctx.save(); ctx.globalAlpha = Math.min(1, fade * 1.5);
+        ctx.strokeStyle = 'rgba(120,120,120,.7)'; ctx.lineWidth = 1;   // string
+        ctx.beginPath(); ctx.moveTo(x, p.y + p.r * 1.2); ctx.quadraticCurveTo(x + Math.sin(p.age * 3 + p.sway) * 8, p.y + p.r * 2.2, x, p.y + p.r * 3.2); ctx.stroke();
+        ctx.fillStyle = p.col;   // body and knot
+        ctx.beginPath(); ctx.ellipse(x, p.y, p.r * 0.85, p.r * 1.08, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(x, p.y + p.r * 1.02); ctx.lineTo(x - 4, p.y + p.r * 1.28); ctx.lineTo(x + 4, p.y + p.r * 1.28); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.45)';   // shine
+        ctx.beginPath(); ctx.ellipse(x - p.r * 0.32, p.y - p.r * 0.42, p.r * 0.18, p.r * 0.3, -0.5, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+      return true;
+    });
+    if (f.parts.length && now - f.born < 9000) f.raf = requestAnimationFrame(fxTick);
+    else { window.removeEventListener('resize', sizeFx); f.c.remove(); fx = null; }   // all over: nothing left running
+  }
+
   function onComplete(t, proceed) {
     const colId = columnOf(t.id);
     // Only intercept when completing (checking). Un-checking always toggles normally.
     if (!t.done) {
+      // where the tap happened and what was still open, captured before anything changes (for the celebration)
+      const origin = completionOrigin(), before = openCounts(colId), wasDue = !!(t.due && t.due <= todayStr()), tid = t.id;
+      const cheer = () => afterComplete(tid, colId, origin, before, wasDue);
       if (isImportantColumn(colId)) {
         const cn = (data.columns.find(x => x.id === colId) || {}).name || 'this list';
         uiConfirm('Complete and delete this task? Tasks in “' + cn + '” are deleted when completed.', () => {
@@ -1519,6 +1647,7 @@ const App = (function () {
           if (editingId === t.id) { editingId = null; $('#overlay').classList.remove('open'); }
           hardDelete(t.id);
           render();
+          cheer();
         });
         return;
       }
@@ -1530,6 +1659,7 @@ const App = (function () {
         // Undo only while the completion is still the latest change; otherwise it would undo something else.
         const mark = undoStack[undoStack.length - 1];
         toast('Completed: ' + (t.title || 'task'), 'Undo', () => { if (undoStack[undoStack.length - 1] === mark) undo(); });
+        cheer();
       };
       if (data.settings.confirmComplete) uiConfirm('Mark this task complete?', complete); else complete();
       return;
@@ -2121,6 +2251,9 @@ const App = (function () {
     // Completing tasks
     const comp = section('Completing tasks');
     check(comp, 'Ask before marking a task complete', () => st.confirmComplete, v => { st.confirmComplete = v; });
+    { const cs = el('select'); [['full', 'Confetti & balloons'], ['subtle', 'Just a tick animation'], ['off', 'Off']].forEach(([v, t]) => { const o = el('option'); o.value = v; o.textContent = t; cs.appendChild(o); });
+      cs.value = st.celebrate === 'subtle' || st.celebrate === 'off' ? st.celebrate : 'full'; cs.onchange = () => { st.celebrate = cs.value; save(); };
+      row(comp, 'Celebrate completed tasks', cs); }
     row(comp, 'Move completed tasks to', colSelect(st.doneColumn, 'Don’t move them', v => { st.doneColumn = v; }));
     const per = el('div', 'small'); per.textContent = 'When a task is completed in…'; per.style.cssText = 'margin:8px 0 2px; color:var(--muted);'; comp.appendChild(per);
     data.columns.forEach(c => {
@@ -3445,7 +3578,7 @@ const App = (function () {
       const doneN = sel.filter(t => !t.done && !isImportantColumn(columnOf(t.id))).length;
       if (!delIds.length && !doneN) return;   // nothing to complete
       const apply = () => {
-        const deleted = [];
+        const deleted = [], origin = completionOrigin(), before = openCounts(null);
         sel.forEach(t => {
           if (t.done) return;
           if (delIds.includes(t.id)) {
@@ -3458,6 +3591,8 @@ const App = (function () {
         persist();
         scrubUndo(deleted);   // Important-list deletions are not recoverable in-session
         render();
+        const after = openCounts(null);
+        celebrate(origin, before.dueNow > 0 && after.dueNow === 0 ? 'today' : null, '', null, 1.6);
       };
       const parts = [];
       if (delIds.length) parts.push(delIds.length + ' Important deleted');
@@ -3638,7 +3773,7 @@ const App = (function () {
         }
       });
     },
-    _test: { todayMITs, mitDayWon, setMIT, doneOn, shipStreak, domainStats, daysSince, calibration, throughputWeeks, quickWins, stickyTasks, matchesFilters, addWin, winsFor, todayStr, addDays, filters, _set: (d) => { data = d; } }
+    _test: { fxState: () => fx ? { pieces: fx.parts.filter(q => q.k === 'c').length, balloons: fx.parts.filter(q => q.k === 'b').length } : null, todayMITs, mitDayWon, setMIT, doneOn, shipStreak, domainStats, daysSince, calibration, throughputWeeks, quickWins, stickyTasks, matchesFilters, addWin, winsFor, todayStr, addDays, filters, _set: (d) => { data = d; } }
   };
 })();
 
