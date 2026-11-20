@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-Sa29qp+gCmhh0QTW5weyN8oSeMzfkYLDIwlOZRmvqms='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-9HLa4PH7LqhH7N/MHIS9U00N2ZBxQRBTt8yJSKO+xhQ='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -506,6 +506,107 @@
   .fs-status { font-size: 13px; color: var(--text-soft); flex: 1 1 180px; }
   .fs-text { width: 100%; min-height: 110px; box-sizing: border-box; font-size: 13px; }
   .fs-steps { margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; }
+  /* ---- Projects ---- */
+  .pj { max-width: 980px; margin: 0 auto; padding: 4px 4px 96px; display: flex; flex-direction: column; gap: 14px; }
+  .pj-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pj-h { margin: 0; font-size: 20px; font-weight: 650; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .pj-head .pj-h { flex: 0 0 auto; margin-right: auto; }
+  .pj-seg button { min-height: 32px; }
+  .pj-new { min-height: 36px; }
+  .pj-muted { color: var(--text-soft); }
+  .pj-status, .pj-status-sel { display: inline-flex; align-items: center; font-size: 12px; font-weight: 600; padding: 2px 9px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; background: transparent; }
+  .pj-status-sel { font-size: 13px; padding: 4px 10px; min-height: 32px; cursor: pointer; width: auto; flex: 0 0 auto; max-width: 100%; }
+  .pj-st-planning { color: color-mix(in srgb, var(--accent) 70%, var(--fg)); }
+  .pj-st-active { color: color-mix(in srgb, var(--success) 62%, var(--fg)); }
+  .pj-st-hold { color: color-mix(in srgb, var(--warning) 60%, var(--fg)); }
+  .pj-st-done { color: var(--text-soft); }
+  .pj-prog { height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--pj, var(--accent)) 18%, var(--bg)); overflow: hidden; }
+  .pj-prog-fill { height: 100%; border-radius: 999px; background: var(--pj, var(--accent)); }
+  .pj-list { display: flex; flex-direction: column; gap: 8px; }
+  .pj-row { display: flex; flex-direction: column; gap: 6px; padding: 12px 14px 12px 16px; border: 1px solid var(--line-strong); border-left: 5px solid var(--pj); border-radius: 10px; background: var(--bg); cursor: pointer; }
+  .pj-row:hover { border-color: var(--fg); border-left-color: var(--pj); }
+  .pj-row-top { display: flex; align-items: center; gap: 10px; }
+  .pj-name { font-weight: 600; font-size: 15.5px; flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; }
+  .pj-row-meta { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 13px; color: var(--text-soft); }
+  .pj-dates.late, .pj-over { color: color-mix(in srgb, var(--danger) 75%, var(--fg)); font-weight: 600; }
+  .pj-tl { border: 1px solid var(--line-strong); border-radius: 10px; padding: 8px 0 6px; background: var(--bg); }
+  .pj-tl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .pj-tl-inner { position: relative; }
+  .pj-tl-months { position: relative; height: 22px; border-bottom: 1px solid var(--border); }
+  .pj-tl-month { position: absolute; top: 0; height: 22px; padding-left: 6px; font-size: 11.5px; font-weight: 600; color: var(--text-soft); white-space: nowrap; overflow: hidden; box-sizing: border-box; }
+  .pj-tl-body { position: relative; }
+  .pj-tl-grid { position: absolute; top: 0; bottom: 0; width: 0; border-left: 1px solid var(--border); }
+  .pj-tl-today { position: absolute; top: -22px; bottom: 0; width: 0; border-left: 2px solid var(--accent); z-index: 1; }
+  .pj-tl-bar { position: absolute; display: block; height: 38px; padding: 0; background: none; border: none; color: var(--fg); cursor: pointer; z-index: 2; font: inherit; }
+  .pj-tl-fill { position: absolute; left: 0; right: 0; bottom: 3px; display: block; height: 15px; border-radius: 5px; overflow: hidden; background: color-mix(in srgb, var(--pj) 30%, var(--bg)); border: 1px solid var(--pj); box-sizing: border-box; }
+  .pj-tl-done { position: absolute; left: 0; top: 0; bottom: 0; background: var(--pj); }
+  .pj-tl-bar.point .pj-tl-fill { width: 11px; height: 11px; bottom: 5px; transform: rotate(45deg); border-radius: 2px; background: var(--pj); }
+  .pj-tl-label { position: absolute; top: 1px; left: 0; font-size: 12.5px; font-weight: 600; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pj-tl-label.end { left: auto; right: 0; }
+  .pj-tl-bar.late .pj-tl-label { color: color-mix(in srgb, var(--danger) 75%, var(--fg)); }
+  .pj-tl-bar:hover .pj-tl-label { text-decoration: underline; }
+  .pj-tl-nodates { padding: 8px 12px 2px; font-size: 13px; }
+  .pj-link { background: none; border: none; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+  .pj-back { align-self: flex-start; background: none; border: none; padding: 6px 0; color: var(--accent); font: inherit; font-size: 14px; cursor: pointer; min-height: 36px; }
+  .pj-page-head { display: flex; flex-direction: column; gap: 8px; padding: 14px 16px; border: 1px solid var(--line-strong); border-top: 5px solid var(--pj); border-radius: 10px; }
+  .pj-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .pj-dot, .pj-chip-dot { display: inline-block; flex: 0 0 auto; width: 12px; height: 12px; border-radius: 50%; background: var(--pj); }
+  .pj-chip-dot { width: 8px; height: 8px; }
+  .pj-notes { margin: 2px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.5; }
+  .pj-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+  .pj-acts button { min-height: 38px; }
+  .pj-add { display: flex; gap: 8px; }
+  .pj-add input { flex: 1 1 auto; min-width: 0; padding: 10px 12px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; }
+  .pj-add button { min-height: 40px; }
+  .pj-group { display: flex; flex-direction: column; }
+  .pj-group-head { display: flex; align-items: center; gap: 8px; background: none; border: none; border-left: 4px solid var(--gc, var(--line-strong)); padding: 6px 8px; color: var(--fg); font: inherit; font-weight: 650; cursor: pointer; text-align: left; min-height: 36px; }
+  .pj-caret { width: 12px; color: var(--icon); }
+  .pj-group-n { font-size: 12px; font-weight: 600; color: var(--text-soft); }
+  .pj-table { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 8px; overflow: hidden; margin-top: 4px; }
+  .pj-trow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border-top: 1px solid var(--border); background: var(--bg); }
+  .pj-trow:first-child { border-top: none; }
+  .pj-trow .checkbox { margin-top: 0; }
+  .pj-ttitle { background: none; border: none; padding: 4px 0; text-align: left; color: var(--fg); font: inherit; font-size: 14.5px; cursor: pointer; overflow-wrap: anywhere; min-width: 0; }
+  .pj-ttitle:hover { text-decoration: underline; }
+  .pj-ttitle.done { color: var(--text-soft); text-decoration: line-through; }
+  .pj-tmeta { display: flex; align-items: center; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+  .pj-tstatus { min-height: 32px; max-width: 160px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--line-strong); border-left: 4px solid var(--gc, var(--line-strong)); background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; }
+  .pj-tdue { font-size: 12px; white-space: nowrap; }
+  .pj-tdue.none { color: var(--text-soft); min-width: 54px; text-align: right; }
+  .pj-tprio { font-size: 12px; font-weight: 600; }
+  .pj-tprio.p1 { color: color-mix(in srgb, #0aa5b8 70%, var(--fg)); } .pj-tprio.p2 { color: color-mix(in srgb, var(--warning) 62%, var(--fg)); } .pj-tprio.p3 { color: color-mix(in srgb, var(--danger) 75%, var(--fg)); }
+  button.badge.pj-chip { display: inline-flex; align-items: center; gap: 5px; cursor: pointer; font: inherit; font-size: 12px; max-width: 170px; border-color: var(--pj); color: var(--fg); background: transparent; }
+  .pj-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pj-fbar { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; box-sizing: border-box; min-height: 44px; padding: 6px 10px; margin: 0 0 8px; border: 1px solid var(--pj); border-left: 5px solid var(--pj); border-radius: 8px; background: color-mix(in srgb, var(--pj) 8%, var(--bg)); font-size: 14px; }
+  .pj-fbar-name { font-weight: 650; margin-right: auto; min-width: 0; flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .pj-fbar button { flex: 0 0 auto; white-space: nowrap; }
+  .pj-fbar button { min-height: 30px; padding: 3px 10px; font-size: 13px; }
+  .surface.has-pj-bar .kanban { height: calc(100% - 52px); }
+  .pj-editor { max-width: 480px; width: calc(100vw - 24px); }
+  .pj-form { display: flex; flex-direction: column; gap: 12px; }
+  .pj-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .pj-flabel { font-size: 13px; font-weight: 600; }
+  .pj-field input, .pj-field select, .pj-field textarea { font-size: 16px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--line-strong); background: var(--bg); color: var(--fg); width: 100%; box-sizing: border-box; }
+  .pj-frow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pj-swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .pj-sw { width: 32px; height: 32px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; box-shadow: inset 0 0 0 2px var(--bg), 0 0 0 1px var(--line-strong); }   /* the ring keeps pale colours visible */
+  .pj-sw.on { border-color: var(--fg); }
+  .pj-msg { color: color-mix(in srgb, var(--danger) 75%, var(--fg)); font-size: 13px; min-height: 1em; }
+  .pj-foot { display: flex; gap: 8px; align-items: center; }
+  .pj-foot button { min-height: 40px; }
+  .pj-del { color: color-mix(in srgb, var(--danger) 78%, var(--fg)); border-color: currentColor; }
+  @media (max-width: 620px) {
+    .pj { padding: 2px 0 110px; gap: 12px; }
+    .pj-head .pj-h { flex: 1 1 auto; }
+    .pj-new { order: 2; }
+    .pj-seg { order: 3; flex: 1 1 100%; }
+    .pj-seg button { flex: 1 1 0; }
+    .pj-trow { grid-template-columns: 26px minmax(0, 1fr); row-gap: 4px; padding: 10px 12px; }
+    .pj-tmeta { grid-column: 2; justify-content: flex-start; }
+    .pj-tstatus { min-height: 36px; max-width: 100%; }
+    .pj-frow { grid-template-columns: 1fr; }
+    .surface.has-board-nav.has-pj-bar .kanban { height: calc(100% - 52px - 52px); }
+  }
   /* ---- Celebrations ---- */
   .fx-layer { position: fixed; inset: 0; pointer-events: none; z-index: 290; }   /* under the Undo bar (300), over everything else */
   .cheer { position: fixed; left: 0; right: 0; margin: 0 auto; width: max-content; top: calc(14px + env(safe-area-inset-top)); z-index: 401; pointer-events: none;
@@ -640,6 +741,10 @@
         <div class="field">
           <label>List / Column</label>
           <select id="m_column"></select>
+        </div>
+        <div class="field" id="m_projectField">
+          <label for="m_project">Project</label>
+          <select id="m_project"><option value="">— none —</option></select>
         </div>
       </div>
       <div class="field">
@@ -1043,7 +1148,7 @@ const App = (function () {
   let pomoRemaining = 0, pomoTimer = null;          // pomodoro timer state
   let reviewQueue = [], reviewIdx = 0, reviewStats = null;  // weekly review state
 
-  const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0, domain:null, rightNow:null };
+  const filters = { search:'', status:'all', due:'all', sort:'manual', tags:new Set(), priorityMin:0, domain:null, rightNow:null, project:null };
 
   /* ---- persistence ---- */
   function defaultData() {
@@ -1076,10 +1181,10 @@ const App = (function () {
   const MIME_RE = /^[\w.+-]{1,64}\/[\w.+-]{1,128}$/;
   const RECURS = ['none', 'daily', 'weekdays', 'weekly', 'monthly'];
   const SORTS = ['manual', 'due', 'priority', 'created', 'alpha'];
-  const VIEW_KEYS = ['list', 'kanban', 'agenda', 'calendar', 'matrix', 'focus', 'plan'];
+  const VIEW_KEYS = ['list', 'kanban', 'projects', 'agenda', 'calendar', 'matrix', 'focus', 'plan'];
   // Limits exist to keep hostile data from stalling the UI. They are far above real use, and
   // free text (task notes) is never truncated, so validation can't silently lose a user's data.
-  const LIMITS = { tasks: 1000000, columns: 1000, tags: 500, links: 1000, files: 500, templates: 10000, tplTasks: 100000, title: Infinity, notes: Infinity, name: 10000, tag: 10000, url: 8000, winsPerDay: 10000, depth: 64 };
+  const LIMITS = { tasks: 1000000, columns: 1000, projects: 1000, tags: 500, links: 1000, files: 500, templates: 10000, tplTasks: 100000, title: Infinity, notes: Infinity, name: 10000, tag: 10000, url: 8000, winsPerDay: 10000, depth: 64 };
   const obj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const dict = () => Object.create(null);           // prototype-free maps for user-chosen keys
   const safeKey = (k) => typeof k === 'string' && !BAD_KEYS.has(k);
@@ -1145,6 +1250,7 @@ const App = (function () {
       parentId: t.parentId == null ? null : (mapTask(t.parentId) || null),
       collapsed: bool(t.collapsed),
       boardOpen: bool(t.boardOpen),          // Board view: subtasks shown inside the card (default: closed)
+      project: okId(t.project) ? t.project : null,   // checked against the board's projects in validate() and sanitize()
       files: (Array.isArray(t.files) ? t.files : []).slice(0, LIMITS.files).map(validateFile).filter(Boolean),
       domain: (typeof t.domain === 'string' && t.domain.trim() && t.domain.length <= 40) ? t.domain : null,   // shown only if the area exists
       impact: intIn(t.impact, 0, 3, 0),
@@ -1172,6 +1278,17 @@ const App = (function () {
     });
     if (!columns.length) defaultData().columns.forEach(c => columns.push(c));
     const mapCol = (v) => (typeof v === 'string' && colMap.has(v)) ? colMap.get(v) : (columns.some(c => c.id === v) ? v : null);
+    // projects (re-key any malformed or duplicated id, and rewrite task references to match)
+    const projMap = new Map(); const projects = [];
+    (Array.isArray(d.projects) ? d.projects : []).filter(obj).slice(0, LIMITS.projects).forEach(pr => {
+      const pid = okId(pr.id) && !projects.some(x => x.id === pr.id) ? pr.id : id();
+      if (typeof pr.id === 'string' && !projMap.has(pr.id)) projMap.set(pr.id, pid);
+      let ps = dateOrNull(pr.start), pe = dateOrNull(pr.end); if (ps && pe && pe < ps) { const sw = ps; ps = pe; pe = sw; }
+      projects.push(Object.assign(extras(pr, ['id', 'name', 'color', 'status', 'start', 'end', 'notes', 'createdAt']), {
+        id: pid, name: str(pr.name, 200).trim() || 'Project', color: hexOr(pr.color, '#2f6fed'),
+        status: oneOf(pr.status, PJ_STATUS_KEYS, 'active'), start: ps, end: pe, notes: str(pr.notes, 20000), createdAt: isoOrNull(pr.createdAt) }));
+    });
+    const mapProj = (v) => (typeof v === 'string' && projMap.has(v)) ? projMap.get(v) : null;
     // tasks (re-key malformed ids and rewrite every reference to them)
     const taskMap = new Map(); const rawTasks = [];
     const srcTasks = obj(d.tasks) ? d.tasks : {};
@@ -1182,7 +1299,7 @@ const App = (function () {
     });
     const mapTask = (v) => (typeof v === 'string' && taskMap.has(v)) ? taskMap.get(v) : null;
     const tasks = dict();
-    rawTasks.forEach(([nid, t]) => { tasks[nid] = validateTask(t, nid, mapTask, mapCol); });
+    rawTasks.forEach(([nid, t]) => { tasks[nid] = validateTask(t, nid, mapTask, mapCol); tasks[nid].project = mapProj(t.project); });
     // order
     const order = dict();
     columns.forEach(c => { order[c.id] = []; });
@@ -1248,8 +1365,8 @@ const App = (function () {
       };
       columns.forEach(c => { if (/^\s*important\s*$/i.test(c.name)) c.onComplete = 'delete'; });
     }
-    return Object.assign(extras(d, ['schema', 'columns', 'tasks', 'order', 'tags', 'ui', 'templates', 'wins', 'settings']),
-      { schema: SCHEMA, columns, tasks, order, tags, ui, templates, wins, settings });
+    return Object.assign(extras(d, ['schema', 'columns', 'tasks', 'order', 'tags', 'ui', 'templates', 'wins', 'settings', 'projects']),
+      { schema: SCHEMA, columns, tasks, order, tags, ui, templates, wins, settings, projects });
   }
   // One-time: promote legacy checklist subtasks into real nested child tasks (runs on validated data).
   function migrate(d) {
@@ -1320,6 +1437,10 @@ const App = (function () {
     Object.keys(data.tasks).forEach(tid => {
       if (!seen.has(tid)) { data.order[data.columns[0].id].push(tid); seen.add(tid); }
     });
+    // a task's project must exist (e.g. after a project is deleted elsewhere, or an undo)
+    if (!Array.isArray(data.projects)) data.projects = [];
+    const pids = new Set(data.projects.map(x => x.id));
+    Object.values(data.tasks).forEach(t => { if (t.project && !pids.has(t.project)) t.project = null; });
     // validate parent links: parent must exist, not self, not form a cycle, and not nest absurdly deep
     Object.values(data.tasks).forEach(t => {
       if (t.parentId && (!data.tasks[t.parentId] || t.parentId === t.id)) t.parentId = null;
@@ -1399,6 +1520,7 @@ const App = (function () {
       recur:'none', recurEvery:1, recurBasis:'due', start:null, blockedBy:[], pinned:false,
       estimate:null, related:[], parentId:null, collapsed:false, boardOpen:false, files:[],
       domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
+      project: contextProject(),   // joins the project you're looking at, if any
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -1520,6 +1642,339 @@ const App = (function () {
   // Decide what "completing" a task means. Tasks in a list set to "delete when completed"
   // are deleted (always after confirmation). Everything else is marked done, with a
   // confirmation only if the board's "Confirm before completing" setting is on.
+  /* ---- Projects ----
+     A project groups tasks under its own name, colour, status, dates and notes. A task joins a project through its own
+     `project` field; subtasks belong to their parent's project. A task's status in a project is simply the Board list it
+     sits in, so the project table and the Board are two views of the same tasks. Everything shown from a project or a
+     task is set as text, never as HTML; colours are checked hex values. */
+  const PJ_STATUS = [ { k:'planning', l:'Planning' }, { k:'active', l:'Active' }, { k:'hold', l:'On hold' }, { k:'done', l:'Done' } ];
+  const PJ_STATUS_KEYS = PJ_STATUS.map(x => x.k);
+  const PJ_COLOR_NAMES = ['Blue', 'Green', 'Orange', 'Red', 'Purple', 'Teal', 'Pink', 'Brown'];
+  let pjOpen = null, pjShow = 'open';
+  const pjFold = new Map();   // per session: which list groups are folded in a project
+  function projects() { return (data && Array.isArray(data.projects)) ? data.projects : []; }
+  function projectById(pid) { return pid ? projects().find(x => x.id === pid) || null : null; }
+  function projectOf(t) {   // the task's own project, or its nearest ancestor's (bounded walk, like every parent walk)
+    let x = t, depth = 0;
+    while (x && depth++ <= LIMITS.depth) { if (x.project && projectById(x.project)) return x.project; x = x.parentId ? data.tasks[x.parentId] : null; }
+    return null;
+  }
+  function contextProject() {
+    if (!data) return null;
+    const pid = filters.project || (data.ui && data.ui.view === 'projects' ? pjOpen : null);
+    return projectById(pid) ? pid : null;
+  }
+  const isFinished = (t) => !!t.done || (!!data.settings.doneColumn && columnOf(t.id) === data.settings.doneColumn);
+  function projectStats(pid) {
+    const today = todayStr(); let total = 0, done = 0, overdue = 0, next = null;
+    Object.values(data.tasks).forEach(t => { if (t.archived || projectOf(t) !== pid) return;
+      total++; if (isFinished(t)) { done++; return; }
+      if (t.due) { if (t.due < today) overdue++; if (!next || t.due < next) next = t.due; } });
+    return { total, done, overdue, next, pct: total ? Math.round(done * 100 / total) : 0 };
+  }
+  const pjColor = (pr) => hexOr(pr && pr.color, '#2f6fed');
+  const pjStatusLabel = (k) => (PJ_STATUS.find(x => x.k === k) || PJ_STATUS[1]).l;
+  const pjLate = (pr) => !!(pr.end && pr.end < todayStr() && pr.status !== 'done');
+  function fmtShort(iso) {
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + (d.getFullYear() !== new Date().getFullYear() ? ' ' + d.getFullYear() : '');
+  }
+  function pjDates(pr) {
+    if (pr.start && pr.end) return fmtShort(pr.start) + ' – ' + fmtShort(pr.end);
+    if (pr.end) return 'Due ' + fmtShort(pr.end);
+    if (pr.start) return 'Starts ' + fmtShort(pr.start);
+    return 'No dates';
+  }
+  function openProject(pid) {
+    pjOpen = pid;
+    if (data.ui.view !== 'projects') setView('projects'); else render();
+    const sf = $('#surface'); if (sf) sf.scrollTop = 0;
+  }
+  function openProjectOnBoard(pid) {
+    filters.project = pid; setView('kanban');
+    // phones show one list at a time: start on the first list that holds this project's tasks
+    const first = data.columns.find(c => (data.order[c.id] || []).some(tid => data.tasks[tid] && matchesFilters(data.tasks[tid]) && !ancestorOnBoard(data.tasks[tid])));
+    if (first && isPhone()) { scrollBoardTo(first.id, false); updateBoardNav(); }
+  }
+  function pjStatusPill(k) { const x = el('span', 'pj-status pj-st-' + oneOf(k, PJ_STATUS_KEYS, 'active')); x.textContent = pjStatusLabel(k); return x; }
+  function pjProgress(st) {
+    const w = el('div', 'pj-prog'); w.setAttribute('role', 'progressbar'); w.setAttribute('aria-valuemin', '0'); w.setAttribute('aria-valuemax', '100');
+    w.setAttribute('aria-valuenow', String(st.pct)); w.setAttribute('aria-label', st.done + ' of ' + st.total + ' tasks done');
+    const f = el('div', 'pj-prog-fill'); f.style.width = st.pct + '%'; w.appendChild(f); return w;
+  }
+  // Shown at the top of other views while they're filtered to a project ("Open on Board").
+  function pjFilterBar() {
+    const pr = projectById(filters.project), bar = el('div', 'pj-fbar'); bar.style.setProperty('--pj', pjColor(pr));
+    bar.appendChild(el('span', 'pj-chip-dot'));
+    const nm = el('span', 'pj-fbar-name'); nm.textContent = pr.name; bar.appendChild(nm);
+    const op = el('button', 'ghost', isPhone() ? 'Open' : 'Open project'); op.type = 'button'; op.setAttribute('aria-label', 'Open project ' + pr.name); op.onclick = () => openProject(pr.id); bar.appendChild(op);
+    const all = el('button', 'ghost', isPhone() ? 'All ✕' : 'Show all ✕'); all.type = 'button'; all.setAttribute('aria-label', 'Show all tasks, not just this project'); all.onclick = () => { filters.project = null; render(); };
+    bar.appendChild(all);
+    return bar;
+  }
+  function renderProjects() {
+    const pr = projectById(pjOpen);
+    if (!pr) { pjOpen = null; return renderProjectsHome(); }
+    return renderProjectPage(pr);
+  }
+  function renderProjectsHome() {
+    const wrap = el('div', 'pj');
+    const head = el('div', 'pj-head');
+    head.appendChild(el('h2', 'pj-h', 'Projects'));
+    const seg = el('div', 'seg pj-seg'); seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'Show projects');
+    [['open', 'Open'], ['done', 'Done'], ['all', 'All']].forEach(([k, l]) => { const b = el('button', pjShow === k ? 'active' : null, l); b.type = 'button'; b.setAttribute('aria-pressed', String(pjShow === k)); b.onclick = () => { pjShow = k; render(); }; seg.appendChild(b); });
+    head.appendChild(seg);
+    const nb = el('button', 'primary pj-new', '+ New project'); nb.type = 'button'; nb.onclick = () => openProjectEditor(null); head.appendChild(nb);
+    wrap.appendChild(head);
+    const all = projects();
+    if (!all.length) {
+      wrap.appendChild(emptyState('🗂️', 'No projects yet', 'A project groups related tasks under its own dates, status and progress, such as “Bean’s birthday” or “Kitchen renovation”. Its tasks still live on your Board.', '+ New project', () => openProjectEditor(null)));
+      return wrap;
+    }
+    const list = all.filter(x => pjShow === 'all' || (pjShow === 'done' ? x.status === 'done' : x.status !== 'done'));
+    if (!list.length) {
+      wrap.appendChild(emptyState('✨', pjShow === 'done' ? 'No finished projects' : 'No open projects', pjShow === 'done' ? 'Projects you mark Done appear here.' : 'Every project is done. Start a new one whenever you like.'));
+      return wrap;
+    }
+    const rank = { active: 0, planning: 1, hold: 2, done: 3 }, far = '9999-99-99';
+    list.sort((a, b) => (rank[a.status] - rank[b.status]) || (a.end || far).localeCompare(b.end || far) || a.name.localeCompare(b.name));
+    const stats = new Map(list.map(x => [x.id, projectStats(x.id)]));
+    const tl = pjTimeline(list, stats); if (tl) wrap.appendChild(tl);
+    const rows = el('div', 'pj-list');
+    list.forEach(pr => {
+      const st = stats.get(pr.id), late = pjLate(pr);
+      const r = el('div', 'pj-row'); r.tabIndex = 0; r.setAttribute('role', 'button'); r.setAttribute('aria-label', 'Open project ' + pr.name);
+      r.style.setProperty('--pj', pjColor(pr));
+      const top = el('div', 'pj-row-top'); const nm = el('span', 'pj-name'); nm.textContent = pr.name; top.appendChild(nm); top.appendChild(pjStatusPill(pr.status)); r.appendChild(top);
+      const meta = el('div', 'pj-row-meta');
+      const dt = el('span', 'pj-dates' + (late ? ' late' : '')); dt.textContent = pjDates(pr) + (late ? ' · past end date' : ''); meta.appendChild(dt);
+      const cnt = el('span', 'pj-count'); cnt.textContent = st.total ? st.done + ' of ' + st.total + ' done' : 'No tasks yet'; meta.appendChild(cnt);
+      if (st.overdue) { const o = el('span', 'pj-over'); o.textContent = st.overdue + ' overdue'; meta.appendChild(o); }
+      else if (st.next) { const n = el('span', 'pj-next'); n.textContent = 'Next due ' + fmtShort(st.next); meta.appendChild(n); }
+      r.appendChild(meta);
+      if (st.total) r.appendChild(pjProgress(st));
+      const go = () => openProject(pr.id);
+      r.onclick = go; r.onkeydown = (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } };
+      rows.appendChild(r);
+    });
+    wrap.appendChild(rows);
+    return wrap;
+  }
+  // Timeline: one bar per project across the weeks, filled to its progress, with a line for today.
+  const dnum = (iso) => { const [y, m, d] = iso.split('-').map(Number); return Math.round(Date.UTC(y, m - 1, d) / 864e5); };
+  function pjTimeline(list, stats) {
+    const dated = list.filter(x => x.start || x.end), undated = list.filter(x => !x.start && !x.end);
+    if (!dated.length && !undated.length) return null;
+    const box = el('div', 'pj-tl');
+    if (dated.length) {
+      const today = dnum(todayStr()); let lo = today, hi = today;
+      dated.forEach(x => [x.start, x.end].forEach(v => { if (v) { const n = dnum(v); if (n < lo) lo = n; if (n > hi) hi = n; } }));
+      const a = new Date((lo - 7) * 864e5), b = new Date((hi + 21) * 864e5);
+      const start = Math.round(Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), 1) / 864e5);
+      let end = Math.round(Date.UTC(b.getUTCFullYear(), b.getUTCMonth() + 1, 0) / 864e5);
+      if (end - start > 760) end = start + 760;   // about two years at most, so one stray date can't make it enormous
+      const days = end - start + 1;
+      const sf = $('#surface'), scs = sf ? getComputedStyle(sf) : null;
+      const avail = Math.max(240, Math.min(980, sf ? sf.clientWidth - parseFloat(scs.paddingLeft) - parseFloat(scs.paddingRight) : 800) - 24);   // the timeline's own width (minus its border and the page's side padding)
+      const dw = Math.max(isPhone() ? 2.2 : 3, Math.min(14, avail / days));
+      const sc = el('div', 'pj-tl-scroll'); sc.setAttribute('role', 'group'); sc.setAttribute('aria-label', 'Project timeline');
+      const innerW = Math.ceil(days * dw + 4), inner = el('div', 'pj-tl-inner'); inner.style.width = innerW + 'px';
+      const hdr = el('div', 'pj-tl-months'), bodyEl = el('div', 'pj-tl-body');
+      bodyEl.style.height = (dated.length * 42 + 8) + 'px';
+      for (let d = start; d <= end; ) {
+        const dt = new Date(d * 864e5), nextM = Math.round(Date.UTC(dt.getUTCFullYear(), dt.getUTCMonth() + 1, 1) / 864e5);
+        const m = el('div', 'pj-tl-month'); m.style.left = ((d - start) * dw) + 'px'; m.style.width = ((Math.min(nextM, end + 1) - d) * dw) + 'px';
+        m.textContent = dt.toLocaleDateString(undefined, { month: 'short', timeZone: 'UTC' }) + (dt.getUTCMonth() === 0 || d === start ? ' ' + dt.getUTCFullYear() : '');
+        hdr.appendChild(m);
+        const g = el('div', 'pj-tl-grid'); g.style.left = ((d - start) * dw) + 'px'; bodyEl.appendChild(g);
+        d = nextM;
+      }
+      if (today >= start && today <= end) { const tline = el('div', 'pj-tl-today'); tline.style.left = ((today - start) * dw + dw / 2) + 'px'; tline.title = 'Today'; bodyEl.appendChild(tline); }
+      dated.forEach((pr, i) => {
+        const st = stats.get(pr.id), late = pjLate(pr), span = !!(pr.start && pr.end);
+        const btn = el('button', 'pj-tl-bar' + (span ? '' : ' point') + (late ? ' late' : '')); btn.type = 'button';
+        btn.style.top = (i * 42 + 4) + 'px'; btn.style.setProperty('--pj', pjColor(pr));
+        const s0 = Math.max(start, Math.min(end, dnum(pr.start || pr.end))), e0 = Math.max(start, Math.min(end, dnum(pr.end || pr.start)));
+        const fw = span ? Math.max(dw * 2, (e0 - s0 + 1) * dw) : 12, bl = Math.max(0, (s0 - start) * dw - (span ? 0 : 6));
+        btn.style.left = bl + 'px'; btn.style.width = fw + 'px';
+        const fill = el('span', 'pj-tl-fill');
+        if (span) { const f = el('span', 'pj-tl-done'); f.style.width = st.pct + '%'; fill.appendChild(f); }
+        const lab = el('span', 'pj-tl-label');
+        lab.textContent = pr.name + (late ? ' · overdue' : (span ? '' : (pr.end ? ' · due ' + fmtShort(pr.end) : ' · starts ' + fmtShort(pr.start))));
+        // the name sits above the bar, starting where the bar starts; near the right edge it ends where the bar ends instead
+        const atEnd = bl + Math.min(320, pr.name.length * 7.5 + 70) > innerW; if (atEnd) lab.classList.add('end');
+        lab.style.maxWidth = Math.max(80, atEnd ? bl + fw : innerW - bl) + 'px'; lab.title = pr.name;   // very long names end in …
+        btn.appendChild(lab); btn.appendChild(fill);
+        btn.setAttribute('aria-label', pr.name + ', ' + pjDates(pr) + ', ' + st.pct + '% done' + (late ? ', past its end date' : '') + '. Open project');
+        btn.onclick = () => openProject(pr.id);
+        bodyEl.appendChild(btn);
+      });
+      inner.appendChild(hdr); inner.appendChild(bodyEl); sc.appendChild(inner); box.appendChild(sc);
+      sc.dataset.todayX = String(Math.max(0, Math.round((today - start) * dw - avail / 5)));   // first view: today sits about a fifth of the way in
+    }
+    if (undated.length) {
+      const nd = el('div', 'pj-tl-nodates'); nd.appendChild(el('span', 'pj-muted', 'No dates yet: '));
+      undated.forEach((pr, i) => { const b = el('button', 'pj-link'); b.type = 'button'; b.textContent = pr.name; b.onclick = () => openProject(pr.id); nd.appendChild(b); if (i < undated.length - 1) nd.appendChild(document.createTextNode(', ')); });
+      box.appendChild(nd);
+    }
+    return box;
+  }
+  function renderProjectPage(pr) {
+    const wrap = el('div', 'pj pj-page'); wrap.style.setProperty('--pj', pjColor(pr));
+    const back = el('button', 'pj-back', '← All projects'); back.type = 'button';
+    back.onclick = () => { pjOpen = null; render(); const sf = $('#surface'); if (sf) sf.scrollTop = 0; };
+    wrap.appendChild(back);
+    const head = el('div', 'pj-page-head');
+    const t1 = el('div', 'pj-title-row'); t1.appendChild(el('span', 'pj-dot'));
+    const h = el('h2', 'pj-h'); h.textContent = pr.name; t1.appendChild(h);
+    const ss = el('select', 'pj-status-sel pj-st-' + oneOf(pr.status, PJ_STATUS_KEYS, 'active')); ss.setAttribute('aria-label', 'Project status');
+    PJ_STATUS.forEach(x => { const o = el('option'); o.value = x.k; o.textContent = x.l; ss.appendChild(o); }); ss.value = pr.status;
+    ss.onchange = () => { pr.status = oneOf(ss.value, PJ_STATUS_KEYS, 'active'); persist(); render(); };
+    t1.appendChild(ss); head.appendChild(t1);
+    const st = projectStats(pr.id), late = pjLate(pr);
+    const sub = el('div', 'pj-row-meta');
+    const dt = el('span', 'pj-dates' + (late ? ' late' : '')); dt.textContent = pjDates(pr) + (late ? ' · past end date' : ''); sub.appendChild(dt);
+    const cnt = el('span', 'pj-count'); cnt.textContent = st.total ? st.done + ' of ' + st.total + ' done (' + st.pct + '%)' : 'No tasks yet'; sub.appendChild(cnt);
+    if (st.overdue) { const o = el('span', 'pj-over'); o.textContent = st.overdue + ' overdue'; sub.appendChild(o); }
+    head.appendChild(sub);
+    if (st.total) head.appendChild(pjProgress(st));
+    if (pr.notes && pr.notes.trim()) { const n = el('p', 'pj-notes'); n.textContent = pr.notes; head.appendChild(n); }
+    const acts = el('div', 'pj-acts');
+    const ob = el('button', 'primary', 'Open on Board'); ob.type = 'button'; ob.onclick = () => openProjectOnBoard(pr.id);
+    const eb = el('button', 'ghost', 'Edit project'); eb.type = 'button'; eb.onclick = () => openProjectEditor(pr.id);
+    acts.appendChild(ob); acts.appendChild(eb); head.appendChild(acts);
+    wrap.appendChild(head);
+    // add a task straight into this project (same shorthand as the other add boxes)
+    const add = el('div', 'pj-add');
+    const inp = el('input'); inp.type = 'text'; inp.placeholder = 'Add a task to this project…'; inp.setAttribute('aria-label', 'Add a task to ' + pr.name); inp.setAttribute('enterkeyhint', 'done'); inp.autocomplete = 'off';
+    const ab = el('button', 'ghost', 'Add'); ab.type = 'button';
+    const commit = () => { const raw = inp.value.trim(); if (!raw) { inp.focus(); return; }
+      const pq = parseQuickAdd(raw); const t = newTask(pq.title || raw, defaultColumnId());
+      t.project = pr.id; t.due = pq.due; t.dueTime = pq.dueTime; t.priority = pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor);
+      persist(); render(); const again = document.querySelector('.pj-add input'); if (again) again.focus(); };
+    ab.onclick = commit; inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } };
+    add.appendChild(inp); add.appendChild(ab); wrap.appendChild(add);
+    // the task table, grouped by Board list (= status), in Board order
+    const members = Object.values(data.tasks).filter(t => !t.archived && projectOf(t) === pr.id);
+    const inProj = new Set(members.map(t => t.id));
+    const tops = new Set(members.filter(t => !(t.parentId && inProj.has(t.parentId))).map(t => t.id));
+    if (!tops.size) {
+      wrap.appendChild(emptyState('📋', 'No tasks in this project yet', 'Add one above, or open any task and choose this project in its details.'));
+      return wrap;
+    }
+    data.columns.forEach(col => {
+      const items = (data.order[col.id] || []).filter(tid => tops.has(tid)).map(tid => data.tasks[tid]);
+      if (!items.length) return;
+      const key = pr.id + ':' + col.id, isDone = col.id === data.settings.doneColumn;
+      const open = pjFold.has(key) ? pjFold.get(key) : !isDone;   // the Done group starts folded
+      const g = el('section', 'pj-group');
+      const gh = el('button', 'pj-group-head'); gh.type = 'button'; gh.setAttribute('aria-expanded', String(open));
+      const cc = colColor(col); if (cc) gh.style.setProperty('--gc', cc);
+      gh.appendChild(el('span', 'pj-caret', open ? '▾' : '▸'));
+      const gn = el('span', 'pj-group-name'); gn.textContent = col.name; gh.appendChild(gn);
+      gh.appendChild(el('span', 'pj-group-n', String(items.length)));
+      gh.onclick = () => { pjFold.set(key, !open); render(); };
+      g.appendChild(gh);
+      if (open) { const tb = el('div', 'pj-table'); tb.setAttribute('role', 'list'); items.forEach(t => tb.appendChild(pjTaskRow(t))); g.appendChild(tb); }
+      wrap.appendChild(g);
+    });
+    return wrap;
+  }
+  function pjTaskRow(t) {
+    const r = el('div', 'pj-trow'); r.setAttribute('role', 'listitem'); r.dataset.id = t.id;
+    const cb = el('div', 'checkbox' + (t.done ? ' done' : '')); cb.setAttribute('role', 'checkbox'); cb.setAttribute('aria-checked', t.done ? 'true' : 'false'); cb.tabIndex = 0;
+    cb.setAttribute('aria-label', (t.done ? 'Mark not done: ' : 'Mark done: ') + (t.title || 'untitled'));
+    const tog = () => onComplete(t, () => { toggleDone(t); persist(); render(); });
+    cb.onclick = (e) => { e.stopPropagation(); tog(); };
+    cb.onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tog(); } };
+    r.appendChild(cb);
+    const tt = el('button', 'pj-ttitle' + (t.done ? ' done' : '')); tt.type = 'button'; tt.textContent = t.title || '(untitled)'; tt.title = 'Open task';
+    tt.onclick = () => openModal(t.id);
+    r.appendChild(tt);
+    const meta = el('div', 'pj-tmeta');
+    if (hasChildren(t.id)) { const ds = descendantStats(t.id); const b = el('span', 'badge sub'); b.innerHTML = icon('check') + Number(ds.done) + '/' + Number(ds.total); meta.appendChild(b); }
+    const sel = el('select', 'pj-tstatus'); sel.setAttribute('aria-label', 'List for ' + (t.title || 'task'));
+    data.columns.forEach(c => { const o = el('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); });
+    const cur = columnOf(t.id); sel.value = cur || '';
+    const cc = colColor(data.columns.find(c => c.id === cur)); if (cc) sel.style.setProperty('--gc', cc);
+    sel.onchange = () => pjSetList(t, sel.value);
+    meta.appendChild(sel);
+    const due = el('span');
+    if (t.due) { const ds = dueState(t.due); due.className = 'badge pj-tdue' + (!t.done && ds === 'over' ? ' due-over' : !t.done && ds === 'today' ? ' due-today' : ''); due.textContent = fmtDue(t.due); }
+    else { due.className = 'pj-tdue none'; due.textContent = 'No date'; }
+    meta.appendChild(due);
+    if (t.priority) { const pp = el('span', 'pj-tprio p' + Number(t.priority)); pp.textContent = (PRIO[t.priority] || PRIO[0]).label; meta.appendChild(pp); }
+    r.appendChild(meta);
+    return r;
+  }
+  // Changing a task's list from a project moves it on the Board; choosing the Done list completes it properly.
+  function pjSetList(t, colId) {
+    if (!data.columns.some(c => c.id === colId) || columnOf(t.id) === colId) return;
+    const doneCol = data.settings.doneColumn;
+    if (colId === doneCol && !t.done) { render(); onComplete(t, () => {}); return; }
+    if (t.done && colId !== doneCol) toggleDone(t);
+    moveTask(t.id, colId); persist(); render();
+  }
+  function openProjectEditor(pid) {
+    const pr = projectById(pid), isNew = !pr;
+    const ov = el('div', 'overlay'); ov.style.display = 'flex'; ov.style.zIndex = '120';
+    const box = el('div', 'modal pj-editor'); box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true'); box.setAttribute('aria-label', isNew ? 'New project' : 'Edit project');
+    const shut = () => { ov.remove(); document.removeEventListener('keydown', onKey, true); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); shut(); } };
+    const head = el('div', 'modal-head'); head.appendChild(el('strong', 'grow', isNew ? 'New project' : 'Edit project'));
+    const x = el('button', 'iconbtn', '✕'); x.type = 'button'; x.setAttribute('aria-label', 'Close'); x.onclick = shut; head.appendChild(x);
+    const body = el('div', 'modal-body pj-form');
+    const field = (label, ctl, parent) => { const f = el('label', 'pj-field'); f.appendChild(el('span', 'pj-flabel', label)); f.appendChild(ctl); (parent || body).appendChild(f); return ctl; };
+    const name = field('Name', el('input')); name.type = 'text'; name.maxLength = 200; name.value = pr ? pr.name : ''; name.placeholder = 'e.g. Bean’s birthday'; name.autocomplete = 'off';
+    let color = pr ? pjColor(pr) : TAG_COLORS[projects().length % TAG_COLORS.length];
+    const cf = el('div', 'pj-field'); cf.appendChild(el('span', 'pj-flabel', 'Colour'));
+    const sw = el('div', 'pj-swatches'); sw.setAttribute('role', 'radiogroup'); sw.setAttribute('aria-label', 'Colour');
+    const drawSw = () => { sw.innerHTML = ''; TAG_COLORS.forEach((c, i) => { const b = el('button', 'pj-sw' + (c === color ? ' on' : '')); b.type = 'button'; b.style.background = c;
+      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(c === color)); b.setAttribute('aria-label', PJ_COLOR_NAMES[i] || 'Colour'); b.onclick = () => { color = c; drawSw(); }; sw.appendChild(b); }); };
+    drawSw(); cf.appendChild(sw); body.appendChild(cf);
+    const status = field('Status', el('select')); PJ_STATUS.forEach(s0 => { const o = el('option'); o.value = s0.k; o.textContent = s0.l; status.appendChild(o); }); status.value = pr ? pr.status : 'active';
+    const row = el('div', 'pj-frow'); body.appendChild(row);
+    const start = field('Start date', el('input'), row); start.type = 'date'; start.value = (pr && pr.start) || '';
+    const end = field('End date', el('input'), row); end.type = 'date'; end.value = (pr && pr.end) || '';
+    const notes = field('Notes', el('textarea')); notes.rows = 3; notes.maxLength = 20000; notes.value = pr ? pr.notes : ''; notes.placeholder = 'The goal, links, anything useful (optional)';
+    const msg = el('div', 'pj-msg'); msg.setAttribute('role', 'alert'); body.appendChild(msg);
+    const foot = el('div', 'modal-foot pj-foot');
+    if (!isNew) {
+      const del = el('button', 'ghost pj-del', 'Delete project'); del.type = 'button';
+      del.onclick = () => { const n = projectStats(pr.id).total;
+        shut();   // close the editor first: the confirmation opens beneath it otherwise
+        uiConfirm('Delete the project “' + pr.name + '”?' + (n ? ' Its ' + n + ' task' + (n === 1 ? '' : 's') + ' stay where they are, just without a project.' : ''), () => {
+          data.projects = projects().filter(q => q.id !== pr.id);
+          Object.values(data.tasks).forEach(t => { if (t.project === pr.id) t.project = null; });
+          if (filters.project === pr.id) filters.project = null;
+          pjOpen = null; persist(); render(); }); };
+      foot.appendChild(del);
+    }
+    foot.appendChild(el('span', 'grow'));
+    const cancel = el('button', 'ghost', 'Cancel'); cancel.type = 'button'; cancel.onclick = shut;
+    const save = el('button', 'primary', isNew ? 'Create project' : 'Save'); save.type = 'button';
+    save.onclick = () => {
+      const nm = name.value.trim(); if (!nm) { msg.textContent = 'Give the project a name.'; name.focus(); return; }
+      const s1 = dateOrNull(start.value), e1 = dateOrNull(end.value);
+      if (s1 && e1 && e1 < s1) { msg.textContent = 'The end date is before the start date.'; end.focus(); return; }
+      const vals = { name: nm.slice(0, 200), color: hexOr(color, '#2f6fed'), status: oneOf(status.value, PJ_STATUS_KEYS, 'active'), start: s1, end: e1, notes: notes.value.slice(0, 20000) };
+      if (isNew) {
+        if (projects().length >= LIMITS.projects) { msg.textContent = 'That’s the most projects a board can hold.'; return; }
+        if (!Array.isArray(data.projects)) data.projects = [];
+        const np = Object.assign({ id: id(), createdAt: new Date().toISOString() }, vals); data.projects.push(np);
+        pjOpen = np.id; data.ui.view = 'projects';
+      } else Object.assign(pr, vals);
+      shut(); persist(); render();
+      if (isNew) { const sf = $('#surface'); if (sf) sf.scrollTop = 0; }
+    };
+    name.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); save.onclick(); } };
+    foot.appendChild(cancel); foot.appendChild(save);
+    box.appendChild(head); box.appendChild(body); box.appendChild(foot); ov.appendChild(box); document.body.appendChild(ov);
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov) shut(); });
+    document.addEventListener('keydown', onKey, true);
+    name.focus();
+  }
+
   /* ---- Celebrations ----
      Every completion: the tick pops and a short confetti burst comes from where you tapped. Milestones (the last task
      due today, or the last open task in a list) add balloons and a message. Drawn on one temporary canvas that never
@@ -2010,6 +2465,7 @@ const App = (function () {
     }
     if (filters.tags.size) { if (!t.tags.some(tag => filters.tags.has(tag))) return false; }
     if (filters.domain) { if (t.domain !== filters.domain) return false; }
+    if (filters.project) { if (projectOf(t) !== filters.project) return false; }
     if (filters.rightNow) {
       if (t.done) return false;
       const mins = filters.rightNow.mins;
@@ -2061,7 +2517,7 @@ const App = (function () {
 
   /* ---- view switcher, menus, customize (declutter UI) ---- */
   const VIEWS = [
-    { k:'list', label:'List', primary:true }, { k:'kanban', label:'Board', primary:true },
+    { k:'list', label:'List', primary:true }, { k:'kanban', label:'Board', primary:true }, { k:'projects', label:'Projects', primary:true },
     { k:'agenda', label:'Agenda', primary:true }, { k:'calendar', label:'Calendar' },
     { k:'matrix', label:'Matrix' }, { k:'focus', label:'Focus' }, { k:'plan', label:'Plan' }
   ];
@@ -2113,7 +2569,7 @@ const App = (function () {
      the open tasks (plus lists, tag colours and settings) so they can be pasted into a brand-new note, after which the old
      note, and its version history, can be deleted. Carried-over data is an allow-list: anything else stays behind. */
   const FRESH_HEADER = 'SN-TASKS-FRESH-START v1';
-  const FRESH_KEEP = ['schema', 'columns', 'tasks', 'order', 'tags', 'settings', 'ui', 'templates'];
+  const FRESH_KEEP = ['schema', 'columns', 'tasks', 'order', 'tags', 'settings', 'ui', 'templates', 'projects'];
   function freshStartSnapshot() {
     const src = JSON.parse(JSON.stringify(data)), out = {};
     FRESH_KEEP.forEach(k => { if (src[k] !== undefined) out[k] = src[k]; });
@@ -2128,6 +2584,9 @@ const App = (function () {
     const order = Object.create(null); (src.columns || []).forEach(c => { order[c.id] = ((src.order || {})[c.id] || []).filter(x => keep.has(x)); }); out.order = order;
     const used = new Set(); Object.values(tasks).forEach(t => (t.tags || []).forEach(g => used.add(g)));
     const tags = Object.create(null); Object.keys(src.tags || {}).forEach(g => { if (used.has(g)) tags[g] = src.tags[g]; }); out.tags = tags;
+    // projects: open ones, plus any finished one an open task still points at; other finished projects stay behind
+    const usedP = new Set(); Object.values(tasks).forEach(t => { if (t.project) usedP.add(t.project); });
+    out.projects = (Array.isArray(src.projects) ? src.projects : []).filter(pr => pr.status !== 'done' || usedP.has(pr.id));
     return { text: FRESH_HEADER + '\n' + JSON.stringify(out), kept: keep.size, subs, lists: (src.columns || []).length,
       done: all.filter(t => t.done && !t.archived).length, archived: all.filter(t => t.archived).length };
   }
@@ -2162,8 +2621,8 @@ const App = (function () {
     if (!empty) {
       const snap = freshStartSnapshot();
       body.appendChild(el('h4', 'fs-h', '1. Copy from this note'));
-      body.appendChild(P('Copies ' + snap.kept + ' open task' + (snap.kept === 1 ? '' : 's') + (snap.subs ? ' (' + snap.subs + ' of them subtasks)' : '') + ', your ' + snap.lists + ' list' + (snap.lists === 1 ? '' : 's') + ', tag colours and settings.'));
-      body.appendChild(P('Left behind: ' + snap.done + ' completed and ' + snap.archived + ' archived task' + (snap.archived === 1 ? '' : 's') + ', and your completion history.', 'fs-p fs-muted'));
+      body.appendChild(P('Copies ' + snap.kept + ' open task' + (snap.kept === 1 ? '' : 's') + (snap.subs ? ' (' + snap.subs + ' of them subtasks)' : '') + ', your ' + snap.lists + ' list' + (snap.lists === 1 ? '' : 's') + ', open projects, tag colours and settings.'));
+      body.appendChild(P('Left behind: ' + snap.done + ' completed and ' + snap.archived + ' archived task' + (snap.archived === 1 ? '' : 's') + ', finished projects, and your completion history.', 'fs-p fs-muted'));
       const row = el('div', 'fs-row'); const cb = el('button', 'primary', 'Copy my open tasks'); cb.type = 'button'; const st = el('span', 'fs-status'); st.setAttribute('role', 'status');
       row.appendChild(cb); row.appendChild(st); body.appendChild(row);
       const manual = el('textarea', 'fs-text'); manual.readOnly = true; manual.hidden = true; manual.setAttribute('aria-label', 'Copied tasks, to select and copy by hand'); body.appendChild(manual);
@@ -2333,7 +2792,7 @@ const App = (function () {
     $('#sortBy').value = filters.sort;
     // filter button: mark active when any filter differs from default
     const fActive = filters.status !== 'all' || filters.due !== 'all' || filters.sort !== 'manual' ||
-      filters.tags.size > 0 || !!data.ui.hideCompletedInList || !!filters.rightNow;
+      filters.tags.size > 0 || !!data.ui.hideCompletedInList || !!filters.rightNow || !!filters.project;
     const fb = $('#filterBtn'); if (fb) fb.classList.toggle('filterBtn-dot', fActive);
     const inView = data.ui.view === 'list' ? listMatch : matchesFilters;
     const visible = Object.values(data.tasks).filter(inView).length;
@@ -2348,7 +2807,10 @@ const App = (function () {
     // afterwards (on phones the Board used to snap back to the first list after every add or tick).
     const keep = lastRenderedView === data.ui.view ? captureScroll(surface) : null;
     surface.innerHTML = '';
+    if (filters.project && !projectById(filters.project)) filters.project = null;
+    if (filters.project && data.ui.view !== 'projects') { surface.classList.add('has-pj-bar'); surface.appendChild(pjFilterBar()); }
     if (data.ui.view === 'kanban') { surface.classList.add('has-board-nav'); surface.appendChild(boardNav()); const kb = renderKanban(); surface.appendChild(kb); kb.addEventListener('scroll', onBoardScroll, { passive: true }); }
+    else if (data.ui.view === 'projects') surface.appendChild(renderProjects());
     else if (data.ui.view === 'agenda') surface.appendChild(renderAgenda());
     else if (data.ui.view === 'matrix') surface.appendChild(renderMatrix());
     else if (data.ui.view === 'calendar') surface.appendChild(renderCalendar());
@@ -2356,6 +2818,7 @@ const App = (function () {
     else if (data.ui.view === 'plan') surface.appendChild(renderPlan());
     else surface.appendChild(renderList());
     if (keep) restoreScroll(surface, keep);
+    { const tl = surface.querySelector('.pj-tl-scroll'); if (tl && !(keep && keep.tlx != null)) tl.scrollLeft = parseFloat(tl.dataset.todayX) || 0; }
     lastRenderedView = data.ui.view;
     if (data.ui.view === 'kanban') updateBoardNav();
 
@@ -2404,7 +2867,8 @@ const App = (function () {
   function captureScroll(surface) {
     const k = surface.querySelector('.kanban'), cols = {};
     if (k) k.querySelectorAll('.column[data-col]').forEach(c => { const b = c.querySelector('.column-body'); if (b) cols[c.dataset.col] = b.scrollTop; });
-    return { sy: surface.scrollTop, kx: k ? k.scrollLeft : null, cols };
+    const tl = surface.querySelector('.pj-tl-scroll');
+    return { sy: surface.scrollTop, kx: k ? k.scrollLeft : null, cols, tlx: tl ? tl.scrollLeft : null };
   }
   function restoreScroll(surface, keep) {
     const k = surface.querySelector('.kanban');
@@ -2412,6 +2876,7 @@ const App = (function () {
       k.scrollLeft = keep.kx;
       k.querySelectorAll('.column[data-col]').forEach(c => { const b = c.querySelector('.column-body'); if (b && keep.cols[c.dataset.col] != null) b.scrollTop = keep.cols[c.dataset.col]; });
     }
+    const tl = surface.querySelector('.pj-tl-scroll'); if (tl && keep.tlx != null) tl.scrollLeft = keep.tlx;
     surface.scrollTop = keep.sy;
   }
   // which Board list is centred on screen (on phones one list fills the screen)
@@ -3159,6 +3624,14 @@ const App = (function () {
         mr.appendChild(b);
       } else { const b = el('span', 'badge sub'); b.innerHTML = icon('check') + s.done + '/' + s.total; mr.appendChild(b); }
     }
+    { const pjid = projectOf(t), pj = projectById(pjid);   // project chip: tap to open the project
+      if (pj && data.ui.view !== 'projects' && filters.project !== pjid) {
+        const b = el('button', 'badge pj-chip'); b.type = 'button'; b.style.setProperty('--pj', pjColor(pj));
+        b.appendChild(el('span', 'pj-chip-dot')); const nm = el('span', 'pj-chip-name'); nm.textContent = pj.name; b.appendChild(nm);
+        b.title = 'Open project: ' + pj.name; b.setAttribute('aria-label', 'Open project ' + pj.name);
+        b.onclick = (e) => { e.stopPropagation(); openProject(pjid); };
+        mr.appendChild(b);
+      } }
     if (isBlocked(t)) mr.appendChild(el('span', 'badge due-over', '⛔ blocked'));
     const mini = [];
     if (isDeferred(t)) mini.push('⏳ ' + escapeHtml(fmtDue(t.start)));
@@ -3272,6 +3745,12 @@ const App = (function () {
     if (t.domain && !domainOf(t.domain)) { const o = document.createElement('option'); o.value = t.domain; o.textContent = t.domain + ' (removed)'; dsel.appendChild(o); }
     dsel.value = t.domain || '';
     $('#m_domainField').hidden = !domains().length && !t.domain;
+    { const ps = $('#m_project'); ps.innerHTML = '';
+      const inh = (!t.project && t.parentId && data.tasks[t.parentId]) ? projectById(projectOf(data.tasks[t.parentId])) : null;
+      const o0 = document.createElement('option'); o0.value = ''; o0.textContent = inh ? '— same as parent (' + inh.name + ') —' : '— none —'; ps.appendChild(o0);
+      projects().filter(x => x.status !== 'done' || x.id === t.project).forEach(x => { const o = document.createElement('option'); o.value = x.id; o.textContent = x.name + (x.status === 'done' ? ' (done)' : ''); ps.appendChild(o); });
+      ps.value = projectById(t.project) ? t.project : '';
+      $('#m_projectField').hidden = !projects().length; }
     $('#m_impact').value = String(t.impact || 0);
     $('#m_energy').value = t.energy || '';
     $('#m_actual').value = (t.actualMin == null ? '' : t.actualMin);
@@ -3334,6 +3813,7 @@ const App = (function () {
     const estv = parseInt($('#m_estimate').value, 10);
     t.estimate = (isNaN(estv) || estv <= 0) ? null : estv;
     t.domain = $('#m_domain').value || null;
+    { const pv = $('#m_project').value; t.project = projectById(pv) ? pv : null; }
     t.impact = parseInt($('#m_impact').value, 10) || 0;
     t.energy = $('#m_energy').value || null;
     const actv = parseInt($('#m_actual').value, 10);
@@ -3674,7 +4154,7 @@ const App = (function () {
     $('#m_subInput').onkeydown = (e) => {
       if (e.key === 'Enter' && e.target.value.trim()) {
         const t = data.tasks[editingId];
-        const ch = newTask(e.target.value.trim(), columnOf(t.id) || data.columns[0].id);
+        const ch = newTask(e.target.value.trim(), columnOf(t.id) || data.columns[0].id); ch.project = null;   /* subtasks follow their parent's project */
         ch.parentId = t.id;
         e.target.value=''; persist(); renderModalSubtasks(t); render();
       }
