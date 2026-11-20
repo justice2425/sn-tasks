@@ -14,7 +14,7 @@
        SN bridge uses postMessage, which CSP does not govern (see origin checks in SNBridge).
      - base-uri and form-action 'none' stop <base> hijacking and form submissions.
      A meta-tag CSP can't set frame-ancestors; embedding is handled by SNBridge's origin pinning. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-9HLa4PH7LqhH7N/MHIS9U00N2ZBxQRBTt8yJSKO+xhQ='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-wzNG78vUfrWCA9LmXiy5A+0rHHOlMyNa73c+G6yZcM0='; style-src 'unsafe-inline' data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; font-src data: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; img-src data: blob: https://app.standardnotes.com http://localhost:* http://127.0.0.1:*; connect-src 'none'; media-src 'none'; frame-src 'none'; worker-src 'none'; manifest-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'" />
 <meta name="referrer" content="no-referrer" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
 <title>Tasks</title>
@@ -474,8 +474,10 @@
   .qa-chips { display: flex; gap: 8px; flex-wrap: wrap; }
   .qa-chips .chip { min-height: 36px; padding: 6px 12px; font-size: 14px; }
   .qa-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .qa-lab { font-size: 13px; color: var(--text-soft); }
-  .qa-list { flex: 1 1 140px; min-width: 0; }
+  .qa-lab { font-size: 13px; color: var(--text-soft); min-width: 50px; }
+  .qa-list { flex: 1 1 0; min-width: 0; min-height: 44px; }
+  .qa-top strong { flex: 1 1 auto; }
+  .qa-top .qa-more { min-height: 36px; padding: 4px 12px; margin-right: 6px; }
   .qa-row button { min-height: 44px; padding: 8px 16px; }
   .qa-msg { font-size: 13px; min-height: 1.2em; color: color-mix(in srgb, var(--success) 60%, var(--fg)); }
   .qa-hint { font-size: 12px; color: var(--text-soft); }
@@ -582,6 +584,50 @@
   .pj-fbar button { flex: 0 0 auto; white-space: nowrap; }
   .pj-fbar button { min-height: 30px; padding: 3px 10px; font-size: 13px; }
   .surface.has-pj-bar .kanban { height: calc(100% - 52px); }
+  .pj-tabs { align-self: flex-start; }
+  .pj-tabs button { min-height: 36px; padding: 6px 16px; }
+  .pj-lastlog { color: var(--text-soft); }
+  .pj-log { display: flex; flex-direction: column; gap: 14px; }
+  .pj-log-comp { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--bg); }
+  .pj-log-comp.editing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .pj-log-editing { font-size: 12px; font-weight: 650; color: var(--accent); }
+  .pj-log-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: space-between; }
+  .pj-log-kinds { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pj-log-kinds .chip { min-height: 32px; padding: 4px 12px; font-size: 13px; }
+  input.pj-log-date { width: auto; flex: 0 0 auto; font-size: 16px; padding: 5px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--fg); min-height: 34px; }
+  .pj-log-text { width: 100%; box-sizing: border-box; min-height: 76px; font: inherit; font-size: 16px; line-height: 1.45; padding: 9px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--fg); resize: vertical; }
+  .pj-log-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pj-log-acts button { min-height: 38px; }
+  .pj-log-tip { font-size: 12px; margin-left: auto; }
+  .pj-log-empty { margin: 0; font-size: 14px; }
+  .pj-log-list { display: flex; flex-direction: column; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+  .pj-log-item { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg); }
+  .pj-log-item:first-child { border-top: none; }
+  .pj-log-item.is-editing { background: color-mix(in srgb, var(--accent) 7%, var(--bg)); }
+  .pj-log-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+  .pj-log-kind { font-size: 11.5px; font-weight: 700; letter-spacing: .02em; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; }
+  .pj-log-kind.k-note { color: var(--text-soft); }
+  .pj-log-kind.k-call { color: color-mix(in srgb, var(--success) 62%, var(--fg)); }
+  .pj-log-kind.k-meeting { color: color-mix(in srgb, #8e4ec6 72%, var(--fg)); }
+  .pj-log-kind.k-email { color: color-mix(in srgb, var(--accent) 70%, var(--fg)); }
+  .pj-log-when { font-size: 12.5px; color: var(--text-soft); margin-right: auto; }
+  .pj-log-act { background: none; border: none; padding: 4px 6px; font: inherit; font-size: 12.5px; color: var(--accent); cursor: pointer; min-height: 30px; }
+  .pj-log-act:hover { text-decoration: underline; }
+  .pj-log-del { color: color-mix(in srgb, var(--danger) 78%, var(--fg)); }
+  .pj-log-body { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14.5px; line-height: 1.5; }
+  .pj-log-fu-btn { font-weight: 600; }
+  .pj-log-actions { display: inline-flex; align-items: center; gap: 2px; margin-left: auto; }
+  .pj-log-fus { margin: 8px 0 0 2px; padding-left: 10px; border-left: 3px solid var(--line-strong); display: flex; flex-direction: column; gap: 2px; }
+  .pj-log-follow { margin-top: 8px; padding: 8px; border: 1px solid var(--accent); border-radius: 8px; background: color-mix(in srgb, var(--accent) 5%, var(--bg)); display: flex; flex-direction: column; gap: 6px; }
+  .pj-log-follow-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .pj-log-follow-row input { flex: 1 1 220px; min-width: 0; font: inherit; font-size: 16px; padding: 8px 10px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--fg); }
+  .pj-log-follow-row button { min-height: 38px; }
+  .pj-log-follow-tip { font-size: 12px; }
+  @media (max-width: 620px) {
+    .pj-tabs { align-self: stretch; } .pj-tabs button { flex: 1 1 0; }
+    .pj-log-act { min-height: 36px; padding: 6px 8px; }
+    .pj-log-kinds .chip { min-height: 36px; }
+  }
   .pj-editor { max-width: 480px; width: calc(100vw - 24px); }
   .pj-form { display: flex; flex-direction: column; gap: 12px; }
   .pj-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
@@ -682,7 +728,7 @@
   <div class="smartviews" id="smartViews"></div>
 
   <div class="quickbar" id="quickBar" hidden>
-    <input id="quickAdd" type="text" placeholder="+ Add a task…   (try: Pay rent tomorrow !high #finance)" />
+    <input id="quickAdd" type="text" placeholder="+ Add a task…   (try: Pay rent tomorrow !high #finance +project)" />
   </div>
 
   <div class="surface" id="surface"></div>
@@ -1184,7 +1230,7 @@ const App = (function () {
   const VIEW_KEYS = ['list', 'kanban', 'projects', 'agenda', 'calendar', 'matrix', 'focus', 'plan'];
   // Limits exist to keep hostile data from stalling the UI. They are far above real use, and
   // free text (task notes) is never truncated, so validation can't silently lose a user's data.
-  const LIMITS = { tasks: 1000000, columns: 1000, projects: 1000, tags: 500, links: 1000, files: 500, templates: 10000, tplTasks: 100000, title: Infinity, notes: Infinity, name: 10000, tag: 10000, url: 8000, winsPerDay: 10000, depth: 64 };
+  const LIMITS = { tasks: 1000000, columns: 1000, projects: 1000, logEntries: 5000, tags: 500, links: 1000, files: 500, templates: 10000, tplTasks: 100000, title: Infinity, notes: Infinity, name: 10000, tag: 10000, url: 8000, winsPerDay: 10000, depth: 64 };
   const obj = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
   const dict = () => Object.create(null);           // prototype-free maps for user-chosen keys
   const safeKey = (k) => typeof k === 'string' && !BAD_KEYS.has(k);
@@ -1251,6 +1297,7 @@ const App = (function () {
       collapsed: bool(t.collapsed),
       boardOpen: bool(t.boardOpen),          // Board view: subtasks shown inside the card (default: closed)
       project: okId(t.project) ? t.project : null,   // checked against the board's projects in validate() and sanitize()
+      followUpOf: okId(t.followUpOf) ? t.followUpOf : null,   // the project log entry this task follows up (checked like project)
       files: (Array.isArray(t.files) ? t.files : []).slice(0, LIMITS.files).map(validateFile).filter(Boolean),
       domain: (typeof t.domain === 'string' && t.domain.trim() && t.domain.length <= 40) ? t.domain : null,   // shown only if the area exists
       impact: intIn(t.impact, 0, 3, 0),
@@ -1284,9 +1331,17 @@ const App = (function () {
       const pid = okId(pr.id) && !projects.some(x => x.id === pr.id) ? pr.id : id();
       if (typeof pr.id === 'string' && !projMap.has(pr.id)) projMap.set(pr.id, pid);
       let ps = dateOrNull(pr.start), pe = dateOrNull(pr.end); if (ps && pe && pe < ps) { const sw = ps; ps = pe; pe = sw; }
-      projects.push(Object.assign(extras(pr, ['id', 'name', 'color', 'status', 'start', 'end', 'notes', 'createdAt']), {
+      // the project's log: dated entries (note, call, meeting, email); ids re-keyed if missing or repeated, empty entries dropped
+      const seenL = new Set();
+      const log = (Array.isArray(pr.log) ? pr.log : []).filter(obj).slice(0, LIMITS.logEntries).map(x => {
+        const lid = okId(x.id) && !seenL.has(x.id) ? x.id : id(); seenL.add(lid);
+        const made = isoOrNull(x.createdAt);
+        return { id: lid, kind: oneOf(x.kind, PJ_LOG_KEYS, 'note'), date: dateOrNull(x.date) || dateOrNull(String(made || '').slice(0, 10)) || todayStr(),
+          text: str(x.text, 20000), createdAt: made, editedAt: isoOrNull(x.editedAt) };
+      }).filter(x => x.text.trim());
+      projects.push(Object.assign(extras(pr, ['id', 'name', 'color', 'status', 'start', 'end', 'notes', 'createdAt', 'log']), {
         id: pid, name: str(pr.name, 200).trim() || 'Project', color: hexOr(pr.color, '#2f6fed'),
-        status: oneOf(pr.status, PJ_STATUS_KEYS, 'active'), start: ps, end: pe, notes: str(pr.notes, 20000), createdAt: isoOrNull(pr.createdAt) }));
+        status: oneOf(pr.status, PJ_STATUS_KEYS, 'active'), start: ps, end: pe, notes: str(pr.notes, 20000), createdAt: isoOrNull(pr.createdAt), log }));
     });
     const mapProj = (v) => (typeof v === 'string' && projMap.has(v)) ? projMap.get(v) : null;
     // tasks (re-key malformed ids and rewrite every reference to them)
@@ -1300,6 +1355,8 @@ const App = (function () {
     const mapTask = (v) => (typeof v === 'string' && taskMap.has(v)) ? taskMap.get(v) : null;
     const tasks = dict();
     rawTasks.forEach(([nid, t]) => { tasks[nid] = validateTask(t, nid, mapTask, mapCol); tasks[nid].project = mapProj(t.project); });
+    { const logIds = new Set(); projects.forEach(pr => pr.log.forEach(x => logIds.add(x.id)));
+      Object.values(tasks).forEach(t => { if (t.followUpOf && !logIds.has(t.followUpOf)) t.followUpOf = null; }); }
     // order
     const order = dict();
     columns.forEach(c => { order[c.id] = []; });
@@ -1441,6 +1498,8 @@ const App = (function () {
     if (!Array.isArray(data.projects)) data.projects = [];
     const pids = new Set(data.projects.map(x => x.id));
     Object.values(data.tasks).forEach(t => { if (t.project && !pids.has(t.project)) t.project = null; });
+    const lids = new Set(); data.projects.forEach(pr => (Array.isArray(pr.log) ? pr.log : []).forEach(x => lids.add(x.id)));
+    Object.values(data.tasks).forEach(t => { if (t.followUpOf && !lids.has(t.followUpOf)) t.followUpOf = null; });
     // validate parent links: parent must exist, not self, not form a cycle, and not nest absurdly deep
     Object.values(data.tasks).forEach(t => {
       if (t.parentId && (!data.tasks[t.parentId] || t.parentId === t.id)) t.parentId = null;
@@ -1521,6 +1580,7 @@ const App = (function () {
       estimate:null, related:[], parentId:null, collapsed:false, boardOpen:false, files:[],
       domain:null, impact:0, energy:null, mit:null, bumpCount:0, actualMin:null,
       project: contextProject(),   // joins the project you're looking at, if any
+      followUpOf: null,
       createdAt: new Date().toISOString(), completedAt:null
     };
     data.tasks[t.id] = t;
@@ -1685,6 +1745,19 @@ const App = (function () {
     if (pr.start) return 'Starts ' + fmtShort(pr.start);
     return 'No dates';
   }
+  // "+kitchen" → the project whose name starts with "kitchen", ignoring case, spaces, accents and punctuation.
+  // Open projects are searched first; if more than one matches, nothing is chosen (the word stays in the title).
+  const pjNorm = (v) => String(v || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[^\p{L}\p{N}]+/gu, '');
+  function matchProject(token) {
+    const q = pjNorm(token); if (!q) return null;
+    const pick = (list) => {
+      const exact = list.filter(x => pjNorm(x.name) === q); if (exact.length === 1) return { id: exact[0].id };
+      const pre = list.filter(x => pjNorm(x.name).startsWith(q));
+      return pre.length === 1 ? { id: pre[0].id } : (pre.length ? { id: null } : null);   // null: no match here, look further
+    };
+    const r = pick(projects().filter(x => x.status !== 'done')) || pick(projects().filter(x => x.status === 'done'));
+    return r ? r.id : null;
+  }
   function openProject(pid) {
     pjOpen = pid;
     if (data.ui.view !== 'projects') setView('projects'); else render();
@@ -1751,6 +1824,7 @@ const App = (function () {
       const cnt = el('span', 'pj-count'); cnt.textContent = st.total ? st.done + ' of ' + st.total + ' done' : 'No tasks yet'; meta.appendChild(cnt);
       if (st.overdue) { const o = el('span', 'pj-over'); o.textContent = st.overdue + ' overdue'; meta.appendChild(o); }
       else if (st.next) { const n = el('span', 'pj-next'); n.textContent = 'Next due ' + fmtShort(st.next); meta.appendChild(n); }
+      const last = pjLastLog(pr); if (last) { const lg = el('span', 'pj-lastlog'); lg.textContent = 'Last logged ' + pjLogDate(last.date).replace(/^[A-Z][a-z]{2}, /, '') + ' (' + pjLogKind(last.kind).toLowerCase() + ')'; meta.appendChild(lg); }
       r.appendChild(meta);
       if (st.total) r.appendChild(pjProgress(st));
       const go = () => openProject(pr.id);
@@ -1844,13 +1918,20 @@ const App = (function () {
     const eb = el('button', 'ghost', 'Edit project'); eb.type = 'button'; eb.onclick = () => openProjectEditor(pr.id);
     acts.appendChild(ob); acts.appendChild(eb); head.appendChild(acts);
     wrap.appendChild(head);
+    const tab = pjTab.get(pr.id) === 'log' ? 'log' : 'tasks', nLog = (pr.log || []).length;
+    const tabs = el('div', 'seg pj-tabs'); tabs.setAttribute('role', 'tablist'); tabs.setAttribute('aria-label', 'Project sections');
+    [['tasks', 'Tasks', st.total], ['log', 'Log', nLog]].forEach(([k, l, n]) => {
+      const b = el('button', tab === k ? 'active' : null); b.type = 'button'; b.setAttribute('role', 'tab'); b.setAttribute('aria-selected', String(tab === k));
+      b.textContent = l + (n ? ' (' + n + ')' : ''); b.onclick = () => { pjTab.set(pr.id, k); render(); }; tabs.appendChild(b); });
+    wrap.appendChild(tabs);
+    if (tab === 'log') { wrap.appendChild(renderProjectLog(pr)); return wrap; }
     // add a task straight into this project (same shorthand as the other add boxes)
     const add = el('div', 'pj-add');
     const inp = el('input'); inp.type = 'text'; inp.placeholder = 'Add a task to this project…'; inp.setAttribute('aria-label', 'Add a task to ' + pr.name); inp.setAttribute('enterkeyhint', 'done'); inp.autocomplete = 'off';
     const ab = el('button', 'ghost', 'Add'); ab.type = 'button';
     const commit = () => { const raw = inp.value.trim(); if (!raw) { inp.focus(); return; }
       const pq = parseQuickAdd(raw); const t = newTask(pq.title || raw, defaultColumnId());
-      t.project = pr.id; t.due = pq.due; t.dueTime = pq.dueTime; t.priority = pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor);
+      t.project = pq.project || pr.id; t.due = pq.due; t.dueTime = pq.dueTime; t.priority = pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor);
       persist(); render(); const again = document.querySelector('.pj-add input'); if (again) again.focus(); };
     ab.onclick = commit; inp.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } };
     add.appendChild(inp); add.appendChild(ab); wrap.appendChild(add);
@@ -1879,6 +1960,147 @@ const App = (function () {
       wrap.appendChild(g);
     });
     return wrap;
+  }
+  /* The project log: dated entries for calls, meetings, emails and notes, newest first. Text is shown as plain text. */
+  const PJ_LOG_KINDS = [ { k:'note', l:'Note' }, { k:'call', l:'Call' }, { k:'meeting', l:'Meeting' }, { k:'email', l:'Email' } ];
+  const PJ_LOG_KEYS = PJ_LOG_KINDS.map(x => x.k);
+  const pjTab = new Map();          // per session: the tab each project page shows
+  let pjLogEdit = null, pjLogDraft = null;   // the entry being edited, and unsaved composer text (kept across redraws)
+  let pjFollow = null, pjFollowDraft = '';   // the entry whose "Follow up" box is open, and its unsaved text
+  // Follow-ups stay on record once done, so they skip a list that deletes tasks when completed (e.g. "Important").
+  function followUpColumnId() {
+    const dft = defaultColumnId(); if (!isImportantColumn(dft)) return dft;
+    const c = data.columns.find(x => !isImportantColumn(x.id) && x.id !== data.settings.doneColumn);
+    return c ? c.id : dft;
+  }
+  function pjFollowTitle(en) {   // 'Follow up: ' + the entry's first line, cut at a word boundary
+    let first = (en.text.split('\n').find(l => l.trim()) || '').trim();
+    if (first.length > 70) { first = first.slice(0, 70); const sp = first.lastIndexOf(' '); first = (sp > 40 ? first.slice(0, sp) : first) + '…'; }
+    return 'Follow up: ' + first;
+  }
+  const pjLogKind = (k) => (PJ_LOG_KINDS.find(x => x.k === k) || PJ_LOG_KINDS[0]).l;
+  const pjLogOrder = (a, b) => b.date.localeCompare(a.date) || String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+  const pjLastLog = (pr) => (pr.log && pr.log.length) ? pr.log.slice().sort(pjLogOrder)[0] : null;
+  function pjLogDate(iso) {
+    const today = todayStr();
+    if (iso === today) return 'Today';
+    if (iso === addDays(today, -1)) return 'Yesterday';
+    const d = new Date(iso + 'T00:00:00');
+    return d.toLocaleDateString(undefined, { weekday: 'short' }) + ', ' + fmtShort(iso);
+  }
+  function renderProjectLog(pr) {
+    const box = el('div', 'pj-log');
+    const editing = pjLogEdit ? (pr.log || []).find(x => x.id === pjLogEdit) || null : null;
+    if (!pjLogDraft || pjLogDraft.pid !== pr.id || pjLogDraft.editId !== (editing ? editing.id : null))
+      pjLogDraft = editing ? { pid: pr.id, editId: editing.id, kind: editing.kind, date: editing.date, text: editing.text }
+                           : { pid: pr.id, editId: null, kind: 'note', date: todayStr(), text: '' };
+    const dft = pjLogDraft;
+    const comp = el('div', 'pj-log-comp' + (editing ? ' editing' : ''));
+    if (editing) comp.appendChild(el('div', 'pj-log-editing', 'Editing an entry'));
+    const row = el('div', 'pj-log-row');
+    const kinds = el('div', 'pj-log-kinds'); kinds.setAttribute('role', 'radiogroup'); kinds.setAttribute('aria-label', 'Type of entry');
+    PJ_LOG_KINDS.forEach(k => {
+      const b = el('button', 'chip' + (dft.kind === k.k ? ' active' : ''), k.l); b.type = 'button'; b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', String(dft.kind === k.k));
+      b.onclick = () => { dft.kind = k.k; kinds.querySelectorAll('button').forEach(x => { const on = x === b; x.classList.toggle('active', on); x.setAttribute('aria-checked', String(on)); }); };
+      kinds.appendChild(b); });
+    const date = el('input', 'pj-log-date'); date.type = 'date'; date.value = dft.date; date.setAttribute('aria-label', 'Date of the entry');
+    date.onchange = () => { dft.date = dateOrNull(date.value) || todayStr(); };
+    row.appendChild(kinds); row.appendChild(date); comp.appendChild(row);
+    const ta = el('textarea', 'pj-log-text'); ta.rows = 3; ta.maxLength = 20000; ta.value = dft.text; ta.setAttribute('aria-label', 'What happened');
+    ta.placeholder = 'What happened? e.g. “Called the plumber: quote £800, can start Jan 6.”';
+    ta.oninput = () => { dft.text = ta.value; };
+    comp.appendChild(ta);
+    const acts = el('div', 'pj-log-acts');
+    const save = el('button', 'primary', editing ? 'Save entry' : 'Add to log'); save.type = 'button';
+    const commit = () => {
+      const txt = ta.value.replace(/\s+$/, ''); if (!txt.trim()) { ta.focus(); return; }
+      if (!Array.isArray(pr.log)) pr.log = [];
+      const vals = { kind: oneOf(dft.kind, PJ_LOG_KEYS, 'note'), date: dateOrNull(date.value) || todayStr(), text: txt.slice(0, 20000) };
+      if (editing) Object.assign(editing, vals, { editedAt: new Date().toISOString() });
+      else {
+        if (pr.log.length >= LIMITS.logEntries) { toast('This project’s log is full (' + LIMITS.logEntries + ' entries).'); return; }
+        pr.log.push(Object.assign({ id: id(), createdAt: new Date().toISOString(), editedAt: null }, vals));
+      }
+      pjLogEdit = null; pjLogDraft = null; persist(); render();
+    };
+    save.onclick = commit;
+    ta.onkeydown = (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); commit(); } };
+    acts.appendChild(save);
+    if (editing) { const cancel = el('button', 'ghost', 'Cancel'); cancel.type = 'button'; cancel.onclick = () => { pjLogEdit = null; pjLogDraft = null; render(); }; acts.appendChild(cancel); }
+    if (!isPhone()) acts.appendChild(el('span', 'pj-muted pj-log-tip', 'Ctrl/⌘+Enter to add'));
+    comp.appendChild(acts); box.appendChild(comp);
+    const entries = (pr.log || []).slice().sort(pjLogOrder);
+    if (!entries.length) { box.appendChild(el('p', 'pj-muted pj-log-empty', 'No entries yet. Log calls, meetings, emails and decisions here, so the project’s history lives in one place.')); return box; }
+    const list = el('div', 'pj-log-list'); list.setAttribute('role', 'list');
+    const followUps = new Map();   // entry id -> its follow-up tasks (one pass over the tasks)
+    Object.values(data.tasks).forEach(t => { if (t.followUpOf && !t.archived) { if (!followUps.has(t.followUpOf)) followUps.set(t.followUpOf, []); followUps.get(t.followUpOf).push(t); } });
+    entries.forEach(en => {
+      const it = el('article', 'pj-log-item' + (editing && editing.id === en.id ? ' is-editing' : '')); it.setAttribute('role', 'listitem');
+      const meta = el('div', 'pj-log-meta');
+      const kp = el('span', 'pj-log-kind k-' + oneOf(en.kind, PJ_LOG_KEYS, 'note')); kp.textContent = pjLogKind(en.kind); meta.appendChild(kp);
+      const when = el('span', 'pj-log-when'); when.textContent = pjLogDate(en.date) + (en.editedAt ? ' · edited' : ''); meta.appendChild(when);
+      const eb = el('button', 'pj-log-act', 'Edit'); eb.type = 'button'; eb.setAttribute('aria-label', 'Edit the ' + pjLogKind(en.kind).toLowerCase() + ' from ' + pjLogDate(en.date));
+      eb.onclick = () => { pjLogEdit = en.id; pjLogDraft = null; render(); const t2 = document.querySelector('.pj-log-text'); if (t2) { t2.focus(); t2.scrollIntoView({ block: 'center' }); } };
+      const db = el('button', 'pj-log-act pj-log-del', 'Delete'); db.type = 'button'; db.setAttribute('aria-label', 'Delete the ' + pjLogKind(en.kind).toLowerCase() + ' from ' + pjLogDate(en.date));
+      db.onclick = () => {
+        pr.log = (pr.log || []).filter(x => x.id !== en.id);
+        Object.values(data.tasks).forEach(t => { if (t.followUpOf === en.id) t.followUpOf = null; });
+        if (pjFollow === en.id) pjFollow = null;
+        if (pjLogEdit === en.id) { pjLogEdit = null; pjLogDraft = null; }
+        persist(); render();
+        const mark = undoStack[undoStack.length - 1];   // Undo only while this is still the latest change
+        toast('Log entry deleted', 'Undo', () => { if (undoStack[undoStack.length - 1] === mark) undo(); });
+      };
+      const fb = el('button', 'pj-log-act pj-log-fu-btn', 'Follow up'); fb.type = 'button'; fb.setAttribute('aria-expanded', String(pjFollow === en.id));
+      fb.setAttribute('aria-label', 'Add a follow-up task for the ' + pjLogKind(en.kind).toLowerCase() + ' from ' + pjLogDate(en.date));
+      fb.onclick = () => { if (pjFollow === en.id) { pjFollow = null; render(); return; } pjFollow = en.id; pjFollowDraft = pjFollowTitle(en); render();
+        const fi = document.querySelector('.pj-log-follow input'); if (fi) { fi.focus(); fi.setSelectionRange(fi.value.length, fi.value.length); } };
+      const actsW = el('span', 'pj-log-actions'); actsW.appendChild(fb); actsW.appendChild(eb); actsW.appendChild(db);   // wrap together on narrow screens
+      meta.appendChild(actsW); it.appendChild(meta);
+      const body = el('div', 'pj-log-body'); body.textContent = en.text; it.appendChild(body);
+      const fus = followUps.get(en.id) || [];
+      if (fus.length) {
+        const fl = el('div', 'pj-log-fus'); fl.setAttribute('role', 'group'); fl.setAttribute('aria-label', 'Follow-up tasks');
+        fus.forEach(t => {
+          const r = el('div', 'sub-row');
+          const c = el('div', 'checkbox' + (t.done ? ' done' : '')); c.setAttribute('role', 'checkbox'); c.setAttribute('aria-checked', t.done ? 'true' : 'false'); c.tabIndex = 0;
+          c.setAttribute('aria-label', (t.done ? 'Mark not done: ' : 'Mark done: ') + (t.title || 'untitled'));
+          const tog = () => onComplete(t, () => { toggleDone(t); persist(); render(); });
+          c.onclick = (e) => { e.stopPropagation(); tog(); }; c.onkeydown = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); tog(); } };
+          const tb = el('button', 'sub-title' + (t.done ? ' done' : '')); tb.type = 'button'; tb.textContent = t.title || '(untitled)'; tb.title = 'Open task'; tb.onclick = () => openModal(t.id);
+          r.appendChild(c); r.appendChild(tb);
+          if (t.due) { const ds = dueState(t.due); const dd = el('span', 'badge sub-due' + (!t.done && ds === 'over' ? ' due-over' : !t.done && ds === 'today' ? ' due-today' : '')); dd.textContent = fmtDue(t.due); r.appendChild(dd); }
+          fl.appendChild(r);
+        });
+        it.appendChild(fl);
+      }
+      if (pjFollow === en.id) {
+        const fbox = el('div', 'pj-log-follow');
+        const fi = el('input'); fi.type = 'text'; fi.value = pjFollowDraft; fi.autocomplete = 'off'; fi.setAttribute('enterkeyhint', 'done'); fi.setAttribute('aria-label', 'Follow-up task');
+        fi.oninput = () => { pjFollowDraft = fi.value; };
+        const add = el('button', 'primary', 'Add task'); add.type = 'button';
+        const cancel = el('button', 'ghost', 'Cancel'); cancel.type = 'button'; cancel.onclick = () => { pjFollow = null; render(); };
+        const commit = () => {
+          const raw = fi.value.trim(); if (!raw) { fi.focus(); return; }
+          const pq = parseQuickAdd(raw), t = newTask(pq.title || raw, followUpColumnId());
+          t.project = pq.project || pr.id; t.followUpOf = en.id;
+          t.due = pq.due; t.dueTime = pq.dueTime; t.priority = pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor);
+          // the notes keep a full date (not "Yesterday"), since they stay with the task
+          const full = new Date(en.date + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+          t.notes = 'Follow-up from the project log (' + pjLogKind(en.kind) + ', ' + full + '):\n\n' + en.text.slice(0, 4000);
+          pjFollow = null; pjFollowDraft = ''; persist(); render();
+          const ln = (data.columns.find(c => c.id === columnOf(t.id)) || {}).name || 'your list';
+          toast('Follow-up added to ' + ln, 'Open', () => openModal(t.id));
+        };
+        add.onclick = commit; fi.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } else if (e.key === 'Escape') { e.preventDefault(); pjFollow = null; render(); } };
+        const frow = el('div', 'pj-log-follow-row'); frow.appendChild(fi); frow.appendChild(add); frow.appendChild(cancel); fbox.appendChild(frow);
+        fbox.appendChild(el('div', 'pj-muted pj-log-follow-tip', 'Add “fri” or “tomorrow 3pm” for a due date, or “!high” for priority. It goes into this project.'));
+        it.appendChild(fbox);
+      }
+      list.appendChild(it);
+    });
+    box.appendChild(list);
+    return box;
   }
   function pjTaskRow(t) {
     const r = el('div', 'pj-trow'); r.setAttribute('role', 'listitem'); r.dataset.id = t.id;
@@ -1936,7 +2158,7 @@ const App = (function () {
     const row = el('div', 'pj-frow'); body.appendChild(row);
     const start = field('Start date', el('input'), row); start.type = 'date'; start.value = (pr && pr.start) || '';
     const end = field('End date', el('input'), row); end.type = 'date'; end.value = (pr && pr.end) || '';
-    const notes = field('Notes', el('textarea')); notes.rows = 3; notes.maxLength = 20000; notes.value = pr ? pr.notes : ''; notes.placeholder = 'The goal, links, anything useful (optional)';
+    const notes = field('Description', el('textarea')); notes.rows = 3; notes.maxLength = 20000; notes.value = pr ? pr.notes : ''; notes.placeholder = 'The goal, links, anything useful (optional). Log calls and meetings in the project’s Log tab.';
     const msg = el('div', 'pj-msg'); msg.setAttribute('role', 'alert'); body.appendChild(msg);
     const foot = el('div', 'modal-foot pj-foot');
     if (!isNew) {
@@ -1945,7 +2167,8 @@ const App = (function () {
         shut();   // close the editor first: the confirmation opens beneath it otherwise
         uiConfirm('Delete the project “' + pr.name + '”?' + (n ? ' Its ' + n + ' task' + (n === 1 ? '' : 's') + ' stay where they are, just without a project.' : ''), () => {
           data.projects = projects().filter(q => q.id !== pr.id);
-          Object.values(data.tasks).forEach(t => { if (t.project === pr.id) t.project = null; });
+          const gone = new Set((pr.log || []).map(x => x.id));
+          Object.values(data.tasks).forEach(t => { if (t.project === pr.id) t.project = null; if (t.followUpOf && gone.has(t.followUpOf)) t.followUpOf = null; });
           if (filters.project === pr.id) filters.project = null;
           pjOpen = null; persist(); render(); }); };
       foot.appendChild(del);
@@ -2217,11 +2440,14 @@ const App = (function () {
 
   /* ---- natural-language quick-add ----
      Understands: today, tomorrow, weekday names, "next <weekday>", "in N days",
-     ISO dates (2026-07-01); !high/!med/!low (or !1/!2/!3); #tag (repeatable). */
+     ISO dates (2026-07-01); !high/!med/!low (or !1/!2/!3); #tag (repeatable); +project (start of a project's name). */
   function parseQuickAdd(raw) {
     let s = ' ' + (raw || '') + ' ';
-    const out = { title:'', due:null, dueTime:null, priority:0, tags:[], recur:'none' };
+    const out = { title:'', due:null, dueTime:null, priority:0, tags:[], recur:'none', project:null };
     s = s.replace(/\s#([^\s#]+)/g, (m, tag) => { out.tags.push(tag); return ' '; });
+    // +project: only a word that names exactly one project is taken out of the title; anything else stays as typed
+    let pjTries = 0;   // at most 20 "+words" are looked up, so pasting a huge block of text can't stall typing
+    s = s.replace(/\s\+(\p{L}[^\s#!+]*)/gu, (m, tok) => { if (out.project || ++pjTries > 20) return m; const pid = matchProject(tok); if (pid) { out.project = pid; return ' '; } return m; });
     s = s.replace(/\s!(?:high|h|3)\b/ig, () => { out.priority = 3; return ' '; });
     s = s.replace(/\s!(?:med|medium|m|2)\b/ig, () => { out.priority = 2; return ' '; });
     s = s.replace(/\s!(?:low|l|1)\b/ig, () => { out.priority = 1; return ' '; });
@@ -2932,18 +3158,30 @@ const App = (function () {
       [['Today', today], ['Tomorrow', addDays(today, 1)], ['Next week', addDays(today, 7)]].forEach(([l, v]) => chips.appendChild(chip(l, st.when === v, () => { st.when = st.when === v ? null : v; draw(); inp.focus(); })));
       chips.appendChild(chip('! High priority', st.high, () => { st.high = !st.high; draw(); inp.focus(); })); };
     draw(); sh.appendChild(chips);
-    const row = el('div', 'qa-row'); const lab = el('label', 'qa-lab', 'List'); const sel = el('select', 'qa-list'); sel.id = 'qaList'; lab.htmlFor = 'qaList';
+    const openPj = projects().filter(x => x.status !== 'done'); let psel = null;
+    if (openPj.length) {
+      psel = el('select', 'qa-list'); psel.id = 'qaProject'; psel.setAttribute('aria-label', 'Project');
+      const ctx = contextProject(), o0 = document.createElement('option'); o0.value = ''; o0.textContent = 'No project'; psel.appendChild(o0);
+      projects().filter(x => x.status !== 'done' || x.id === ctx).forEach(x => { const o = document.createElement('option'); o.value = x.id; o.textContent = x.name; psel.appendChild(o); });
+      psel.value = ctx || '';
+      inp.addEventListener('input', () => { const pq = parseQuickAdd(inp.value); if (pq.project && [...psel.options].some(o => o.value === pq.project)) psel.value = pq.project; });
+    }
+    // one compact row (project, list, Add) so Add stays above the phone keyboard; Details… sits by the close button
+    const row = el('div', 'qa-row'); const sel = el('select', 'qa-list'); sel.id = 'qaList'; sel.setAttribute('aria-label', 'List');
     data.columns.forEach(c => { const o = document.createElement('option'); o.value = c.id; o.textContent = c.name; sel.appendChild(o); }); sel.value = startCol;
     const more = el('button', 'ghost', 'Details…'); more.type = 'button'; const add = el('button', 'primary', 'Add'); add.type = 'button';
-    [lab, sel, more, add].forEach(n => row.appendChild(n)); sh.appendChild(row);
+    if (psel) row.appendChild(psel); row.appendChild(sel); row.appendChild(add); sh.appendChild(row);
+    more.classList.add('qa-more'); top.insertBefore(more, x);
     const msg = el('div', 'qa-msg'); msg.setAttribute('role', 'status'); sh.appendChild(msg);
-    const hint = el('div', 'qa-hint'); hint.textContent = 'Tip: “Call mum tomorrow 5pm !high #family” fills in the date, time, priority and tag.'; sh.appendChild(hint);
+    const hint = el('div', 'qa-hint'); hint.textContent = 'Tip: “Call mum tomorrow 5pm !high #family” fills in the date, time, priority and tag'
+      + (openPj.length ? '; add +' + openPj[0].name.split(/\s+/)[0].toLowerCase() + ' to put it in “' + openPj[0].name + '”.' : '.'); sh.appendChild(hint);
     ov.appendChild(sh); document.body.appendChild(ov);
     // same steps as the existing add boxes: parse, create in the chosen list, copy the parsed fields
     // the chosen list may have been deleted meanwhile (e.g. by a sync); never file a task under a missing list
     const listId = () => data.columns.some(c => c.id === sel.value) ? sel.value : defaultColumnId();
     const create = () => { const raw = inp.value.trim(); if (!raw) return null; const pq = parseQuickAdd(raw); const t = newTask(pq.title || raw, listId());
-      t.due = st.when || pq.due; t.dueTime = pq.dueTime; t.priority = st.high ? HIGH : pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor); return t; };
+      t.due = st.when || pq.due; t.dueTime = pq.dueTime; t.priority = st.high ? HIGH : pq.priority; t.tags = pq.tags; t.recur = pq.recur || 'none'; pq.tags.forEach(ensureTagColor);
+      t.project = pq.project || (psel && projectById(psel.value) ? psel.value : null); return t; };
     const close = () => { ov.remove(); const f = $('#addTaskBtn'); if (f) f.focus(); };
     add.onclick = () => { const t = create(); if (!t) { inp.focus(); return; }
       persist(); render(); if (data.ui.view === 'kanban') { scrollBoardTo(sel.value, false); updateBoardNav(); }
@@ -3042,11 +3280,11 @@ const App = (function () {
     // quick add
     const qa = el('div', 'quickadd');
     const qi = el('input'); qi.type = 'text'; qi.placeholder = '+ Add task';
-    qi.title = 'Try: Pay rent tomorrow !high #finance';
+    qi.title = 'Try: Pay rent tomorrow !high #finance +project';
     const addNow = () => {
       if (!qi.value.trim()) { qi.focus(); return; }
       const p = parseQuickAdd(qi.value);
-      const t = newTask(p.title, col.id);
+      const t = newTask(p.title, col.id); if (p.project) t.project = p.project;
       t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor);
       persist(); qi.value = ''; render();
     };
@@ -3310,8 +3548,8 @@ const App = (function () {
   function paletteItems(q) {
     const items = []; const ql = q.trim().toLowerCase();
     if (q.trim()) { const p = parseQuickAdd(q);
-      const sub = [p.due ? ('due ' + p.due + (p.dueTime ? (' ' + p.dueTime) : '')) : '', p.priority ? ('P' + p.priority) : '', p.recur !== 'none' ? p.recur : '', p.tags.length ? ('#' + p.tags.join(' #')) : ''].filter(Boolean).join(' · ');
-      items.push({ ic: '➕', main: 'Add task: ' + (p.title || '(untitled)'), sub: sub, run: () => { const t = newTask(p.title, defaultColumnId()); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor); persist(); render(); openModal(t.id); } });
+      const sub = [p.due ? ('due ' + p.due + (p.dueTime ? (' ' + p.dueTime) : '')) : '', p.priority ? ('P' + p.priority) : '', p.recur !== 'none' ? p.recur : '', p.tags.length ? ('#' + p.tags.join(' #')) : '', projectById(p.project) ? ('project: ' + projectById(p.project).name) : ''].filter(Boolean).join(' · ');
+      items.push({ ic: '➕', main: 'Add task: ' + (p.title || '(untitled)'), sub: sub, run: () => { const t = newTask(p.title, defaultColumnId()); if (p.project) t.project = p.project; t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor); persist(); render(); openModal(t.id); } });
     }
     [['list','List'],['kanban','Board'],['agenda','Agenda'],['calendar','Calendar'],['matrix','Matrix'],['focus','Focus'],['plan','Plan']].forEach(([v,label]) => {
       if (!ql || label.toLowerCase().includes(ql) || ('go to ' + label).toLowerCase().includes(ql)) items.push({ ic: '▸', main: 'Go to ' + label, run: () => { data.ui.view = v; saveOut(); render(); } });
@@ -4005,7 +4243,7 @@ const App = (function () {
     const quickAddNow = () => {
       const inp = $('#quickAdd'); if (!inp.value.trim()) return;
       const p = parseQuickAdd(inp.value); const col = defaultColumnId();
-      const t = newTask(p.title, col); t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor);
+      const t = newTask(p.title, col); if (p.project) t.project = p.project; t.due = p.due; t.dueTime = p.dueTime; t.priority = p.priority; t.tags = p.tags; t.recur = p.recur || 'none'; p.tags.forEach(ensureTagColor);
       persist(); inp.value = ''; render(); const q = $('#quickAdd'); if (q) q.focus();
     };
     $('#quickAdd').onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); quickAddNow(); } };
